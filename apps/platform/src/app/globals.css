@@ -2639,3 +2639,1014 @@ button {
     border-color: transparent;
   }
 }
+
+/* ============================================================
+ * Landing + redesigned deploy flow ("ot-*" namespace).
+ * Everything below is additive — old classes above are untouched.
+ * ============================================================ */
+
+.ot-landing {
+  display: grid;
+  gap: clamp(28px, 6vw, 60px);
+  padding: clamp(24px, 6vw, 56px) 0 24px;
+  min-height: calc(100dvh - 96px);
+  grid-template-rows: 1fr auto auto;
+}
+
+.ot-hero {
+  display: grid;
+  gap: 24px;
+  justify-items: start;
+  max-width: 880px;
+  margin: 0;
+  padding: clamp(16px, 4vw, 36px) 0;
+}
+
+.ot-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent-strong);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ot-hero__title {
+  margin: 0;
+  font-size: clamp(2.1rem, 6.5vw, 4.8rem);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.02;
+  color: var(--ink);
+}
+
+.ot-hero__title em {
+  color: var(--accent-strong);
+  font-style: normal;
+}
+
+.ot-hero__lede {
+  margin: 0;
+  max-width: 640px;
+  color: var(--ink-soft);
+  font-size: clamp(1rem, 1.4vw, 1.2rem);
+  line-height: 1.5;
+}
+
+.ot-hero__cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.ot-rows {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ot-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  background: var(--surface);
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.ot-row:hover {
+  border-color: var(--line-strong);
+}
+
+.ot-row__icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.ot-row__copy h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.ot-row__copy p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.ot-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 0 4px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.ot-footer__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ot-footer__brand em {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-style: normal;
+}
+
+.ot-footer__links {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ot-footer__links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.ot-footer__links a:hover {
+  background: var(--surface);
+  color: var(--accent-strong);
+}
+
+/* ----- Deploy page ----------------------------------------- */
+
+.ot-deploy-page {
+  display: grid;
+  gap: 22px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: clamp(20px, 5vw, 36px) 0 32px;
+}
+
+.ot-deploy-page__head {
+  display: grid;
+  gap: 6px;
+  text-align: center;
+}
+
+.ot-deploy-page__head h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  line-height: 1.1;
+}
+
+.ot-deploy-page__head p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 1rem;
+}
+
+.ot-deploy-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.ot-stepper {
+  display: grid;
+  gap: 20px;
+}
+
+.ot-stepper--loading {
+  min-height: 320px;
+}
+
+/* ----- Step indicator -------------------------------------- */
+
+.ot-stepdots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.ot-stepdot {
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  padding: 6px 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-align: center;
+  cursor: default;
+}
+
+.ot-stepdot:not(:disabled) {
+  cursor: pointer;
+}
+
+.ot-stepdot__dot {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  transition: background 180ms ease, border-color 180ms ease,
+    color 180ms ease, transform 180ms ease;
+}
+
+.ot-stepdot[data-state="current"] .ot-stepdot__dot {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: #fffaf2;
+  transform: scale(1.05);
+}
+
+.ot-stepdot[data-state="done"] .ot-stepdot__dot {
+  border-color: rgba(23, 111, 73, 0.42);
+  background: rgba(23, 111, 73, 0.12);
+  color: var(--green);
+}
+
+.ot-stepdot[data-state="current"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.ot-stepdot[data-state="done"] {
+  color: var(--ink-soft);
+}
+
+.ot-stepdot__pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #fffaf2;
+}
+
+.ot-stepdot__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ----- Step body ------------------------------------------- */
+
+.ot-step {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: clamp(18px, 4vw, 28px);
+  background: var(--surface);
+  box-shadow: 0 1px 0 rgba(21, 23, 22, 0.03);
+}
+
+.ot-step__head {
+  display: grid;
+  gap: 4px;
+}
+
+.ot-step__head h2 {
+  margin: 0;
+  font-size: clamp(1.3rem, 3vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: -0.008em;
+  line-height: 1.2;
+}
+
+.ot-step__head p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.94rem;
+  line-height: 1.45;
+}
+
+/* ----- Fields, buttons, inputs ----------------------------- */
+
+.ot-field {
+  display: grid;
+  gap: 7px;
+}
+
+.ot-field label,
+.ot-field__label {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ot-field input,
+.ot-field select,
+.ot-field textarea {
+  width: 100%;
+  min-height: 48px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: 1rem;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.ot-field input:focus,
+.ot-field select:focus,
+.ot-field textarea:focus {
+  border-color: var(--accent-strong);
+  outline: none;
+}
+
+.ot-field textarea {
+  min-height: 92px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.ot-hint {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.ot-hint--center {
+  text-align: center;
+}
+
+.ot-input-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.ot-input-group input {
+  min-height: 48px;
+}
+
+.ot-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease,
+    color 160ms ease, transform 160ms ease, opacity 160ms ease;
+}
+
+.ot-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ot-button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.ot-button--primary {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #fffaf2;
+}
+
+.ot-button--primary:not(:disabled):hover {
+  background: #963d0d;
+}
+
+.ot-button--ghost {
+  background: transparent;
+}
+
+.ot-button--ghost:not(:disabled):hover {
+  background: rgba(21, 23, 22, 0.05);
+}
+
+.ot-button--icon {
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+}
+
+.ot-button--block {
+  width: 100%;
+}
+
+.ot-button--small {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.ot-button--giant {
+  min-height: 56px;
+  font-size: 1.04rem;
+  padding: 0 22px;
+}
+
+.ot-button--launch {
+  box-shadow: 0 6px 18px rgba(184, 77, 18, 0.28);
+}
+
+/* ----- Token card ------------------------------------------ */
+
+.ot-token-card {
+  display: grid;
+  gap: 12px;
+  border: 1.5px dashed rgba(45, 95, 154, 0.32);
+  border-radius: var(--radius);
+  padding: 18px;
+  background: rgba(45, 95, 154, 0.05);
+}
+
+.ot-token-card__why {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* ----- Alerts ---------------------------------------------- */
+
+.ot-alert {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.ot-alert--error {
+  border-color: rgba(180, 59, 53, 0.36);
+  background: rgba(180, 59, 53, 0.08);
+  color: var(--red);
+}
+
+.ot-alert--warn {
+  border-color: rgba(223, 111, 33, 0.38);
+  background: rgba(223, 111, 33, 0.1);
+  color: var(--accent-strong);
+}
+
+.ot-alert--ok {
+  border-color: rgba(23, 111, 73, 0.36);
+  background: rgba(23, 111, 73, 0.08);
+  color: var(--green);
+}
+
+/* ----- Verified pill --------------------------------------- */
+
+.ot-verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 6px 12px;
+  border: 1px solid rgba(23, 111, 73, 0.36);
+  border-radius: 999px;
+  background: rgba(23, 111, 73, 0.1);
+  color: var(--green);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+/* ----- Toggles / disclose / segmented ---------------------- */
+
+.ot-disclose {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  background: var(--surface-strong);
+}
+
+.ot-disclose summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.94rem;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  user-select: none;
+}
+
+.ot-disclose summary::-webkit-details-marker {
+  display: none;
+}
+
+.ot-disclose summary::before {
+  content: "+";
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.ot-disclose[open] summary::before {
+  content: "−";
+}
+
+.ot-disclose--quiet {
+  border-style: dashed;
+  background: transparent;
+}
+
+.ot-toggle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+}
+
+.ot-toggle-row__main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ot-toggle-row__main strong {
+  font-size: 0.94rem;
+}
+
+.ot-toggle-row__main small {
+  color: var(--ink-soft);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.ot-toggle-row__main small code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(21, 23, 22, 0.06);
+}
+
+.ot-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 28px;
+}
+
+.ot-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.ot-switch span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background 180ms ease;
+}
+
+.ot-switch span::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #fffaf2;
+  box-shadow: 0 1px 3px rgba(21, 23, 22, 0.2);
+  transition: transform 180ms ease;
+}
+
+.ot-switch input:checked + span {
+  background: var(--accent-strong);
+}
+
+.ot-switch input:checked + span::after {
+  transform: translateX(20px);
+}
+
+.ot-switch input:focus-visible + span {
+  box-shadow: 0 0 0 3px rgba(223, 111, 33, 0.32);
+}
+
+.ot-switch--inline {
+  flex: 0 0 auto;
+}
+
+.ot-domain-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.ot-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ot-segmented__btn {
+  display: grid;
+  gap: 2px;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.ot-segmented__btn strong {
+  font-size: 0.88rem;
+}
+
+.ot-segmented__btn small {
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  line-height: 1.3;
+}
+
+.ot-segmented__btn[data-active="true"] {
+  border-color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+/* ----- Summary list (Step 3) ------------------------------- */
+
+.ot-summary {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  overflow: hidden;
+}
+
+.ot-summary > div {
+  display: grid;
+  grid-template-columns: minmax(0, 0.4fr) minmax(0, 0.6fr);
+  gap: 14px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.ot-summary > div:first-child {
+  border-top: 0;
+}
+
+.ot-summary dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ot-summary dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.94rem;
+  word-break: break-word;
+}
+
+.ot-fineprint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  justify-content: center;
+  text-align: center;
+}
+
+.ot-fineprint code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(21, 23, 22, 0.05);
+}
+
+/* ----- AgentLaunched view ---------------------------------- */
+
+.ot-launched {
+  display: grid;
+  gap: 18px;
+}
+
+.ot-launched__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: clamp(16px, 4vw, 22px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.ot-launched__head[data-state="ready"] {
+  border-color: rgba(23, 111, 73, 0.38);
+  background: linear-gradient(180deg, rgba(23, 111, 73, 0.08), var(--surface));
+}
+
+.ot-launched__head[data-state="error"] {
+  border-color: rgba(180, 59, 53, 0.4);
+  background: linear-gradient(180deg, rgba(180, 59, 53, 0.06), var(--surface));
+}
+
+.ot-launched__head[data-state="active"] {
+  border-color: rgba(45, 95, 154, 0.36);
+  background: linear-gradient(180deg, rgba(45, 95, 154, 0.06), var(--surface));
+}
+
+.ot-launched__icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--accent-strong);
+}
+
+.ot-launched__head[data-state="ready"] .ot-launched__icon {
+  color: var(--green);
+  background: rgba(23, 111, 73, 0.12);
+}
+
+.ot-launched__head[data-state="error"] .ot-launched__icon {
+  color: var(--red);
+  background: rgba(180, 59, 53, 0.12);
+}
+
+.ot-launched__head[data-state="active"] .ot-launched__icon {
+  color: var(--blue);
+  background: rgba(45, 95, 154, 0.12);
+}
+
+.ot-launched__head h2 {
+  margin: 0;
+  font-size: clamp(1.2rem, 3vw, 1.5rem);
+  font-weight: 700;
+  letter-spacing: -0.008em;
+}
+
+.ot-launched__head p {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.94rem;
+  line-height: 1.4;
+}
+
+.ot-launched__timeline {
+  padding: clamp(14px, 3vw, 20px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.ot-card {
+  display: grid;
+  gap: 14px;
+  padding: clamp(16px, 4vw, 22px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.ot-card__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.ot-card__head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.ot-card__head p {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.ot-manage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.ot-manage-tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--ink);
+  transition: border-color 160ms ease, background 160ms ease,
+    transform 160ms ease;
+}
+
+.ot-manage-tile:hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-soft);
+  transform: translateY(-1px);
+}
+
+.ot-manage-tile strong,
+.ot-manage-tile small {
+  display: block;
+}
+
+.ot-manage-tile strong {
+  font-size: 0.94rem;
+}
+
+.ot-manage-tile small {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
+.ot-launched__foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px 4px 4px;
+  border-top: 1px dashed var(--line);
+}
+
+.ot-textlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--blue);
+  font-size: 0.86rem;
+  font-family: var(--mono);
+  word-break: break-all;
+}
+
+.ot-textlink:hover {
+  text-decoration: underline;
+}
+
+/* ----- Responsive ------------------------------------------ */
+
+@media (max-width: 900px) {
+  .ot-rows {
+    grid-template-columns: 1fr;
+  }
+
+  .ot-card__head {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .ot-deploy-page {
+    padding: 14px 0 24px;
+  }
+
+  .ot-step {
+    padding: 18px 16px;
+  }
+
+  .ot-stepdot__label {
+    font-size: 0.72rem;
+  }
+
+  .ot-segmented {
+    grid-template-columns: 1fr;
+  }
+
+  .ot-launched__head {
+    grid-template-columns: 1fr;
+    text-align: left;
+  }
+
+  .ot-launched__foot {
+    justify-content: stretch;
+  }
+
+  .ot-launched__foot > .ot-button {
+    width: 100%;
+  }
+
+  .ot-summary > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 360px) {
+  .ot-stepdot__label {
+    display: none;
+  }
+
+  .ot-stepdot {
+    min-height: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ot-button,
+  .ot-stepdot__dot,
+  .ot-manage-tile,
+  .ot-row {
+    transition: none;
+  }
+
+  .ot-button:not(:disabled):hover,
+  .ot-manage-tile:hover {
+    transform: none;
+  }
+
+  .progress-track__fill[data-status="active"]::after,
+  .ot-spin {
+    animation: none;
+  }
+}
+

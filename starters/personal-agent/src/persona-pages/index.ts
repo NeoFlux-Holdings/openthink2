@@ -92,3 +92,26 @@ export {
   type KnowledgePageProps,
   type KnowledgeView
 } from "./knowledge-page";
+
+export {
+  PersonaHome,
+  DEFAULT_QUICK_ACTIONS,
+  DEFAULT_TEMPLATES,
+  type PersonaComposeMode,
+  type PersonaHomeProps,
+  type PersonaQuickAction,
+  type PersonaRecentThread,
+  type PersonaTemplate
+} from "./persona-home";
+
+export {
+  PersonaThreadFeed,
+  type PersonaMessageAction,
+  type PersonaThreadFeedProps,
+  type PersonaThreadStatus
+} from "./persona-thread-feed";
+
+export {
+  PersonaComposer,
+  type PersonaComposerProps
+} from "./persona-composer";

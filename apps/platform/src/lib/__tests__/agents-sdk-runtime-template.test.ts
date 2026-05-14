@@ -40,6 +40,14 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
       "src/client-env.d.ts",
       "src/client.css",
       "src/client.tsx",
+      "src/persona-shell.tsx",
+      "src/persona-shell.css",
+      "src/persona-app.tsx",
+      "src/persona-pages/index.ts",
+      "src/persona-pages/persona-home.tsx",
+      "src/persona-pages/persona-thread-feed.tsx",
+      "src/persona-pages/persona-composer.tsx",
+      "src/persona-pages/persona-pages.css",
       "src/orchestrator-runtime.ts",
       "src/server.ts"
     ]);
@@ -96,6 +104,44 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
     expect(wrangler["//browser"]).toContain("Browser Rendering");
 
     const client = files.find((file) => file.path === "src/client.tsx")?.contents ?? "";
+    // Persona shell is the default; ?shell=legacy keeps the old chat available.
+    expect(client).toContain('?shell=legacy');
+    expect(client).toContain("LazyPersonaApp");
+    expect(client).toContain("PersonaShellMount");
+    expect(client).toContain('await import("./persona-app")');
+    expect(client).toContain('await import("./persona-pages/persona-pages.css")');
+    expect(client).not.toContain('shell === "persona"');
+
+    const personaShellTsx = files.find((file) => file.path === "src/persona-shell.tsx")?.contents ?? "";
+    expect(personaShellTsx).toContain("export function PersonaShell");
+
+    const personaApp = files.find((file) => file.path === "src/persona-app.tsx")?.contents ?? "";
+    expect(personaApp).toContain("export function PersonaApp");
+    expect(personaApp).toContain("PersonaHome");
+    expect(personaApp).toContain("PersonaThreadFeed");
+    expect(personaApp).toContain("PersonaComposer");
+
+    const personaHome = files.find((file) => file.path === "src/persona-pages/persona-home.tsx")?.contents ?? "";
+    expect(personaHome).toContain("What do you need done?");
+    expect(personaHome).toContain("Write something");
+    expect(personaHome).toContain("Research a topic");
+    expect(personaHome).toContain("Plan first");
+
+    const threadFeed = files.find((file) => file.path === "src/persona-pages/persona-thread-feed.tsx")?.contents ?? "";
+    expect(threadFeed).toContain("Reasoned ▸");
+    expect(threadFeed).toContain("persona-thread__working-doc");
+    expect(threadFeed).toContain("persona-thread__followups");
+
+    const composer = files.find((file) => file.path === "src/persona-pages/persona-composer.tsx")?.contents ?? "";
+    expect(composer).toContain("PersonaComposer");
+    expect(composer).toContain("persona-composer__send");
+
+    const personaIndex = files.find((file) => file.path === "src/persona-pages/index.ts")?.contents ?? "";
+    expect(personaIndex).toContain('from "./persona-home"');
+    expect(personaIndex).toContain('from "./persona-thread-feed"');
+    expect(personaIndex).toContain('from "./persona-composer"');
+    expect(personaIndex).not.toContain("library-page");
+
     expect(client).toContain('import { useAgent } from "agents/react"');
     expect(client).toContain("getToolApproval");
     expect(client).toContain("getAgentMessages");

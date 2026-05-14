@@ -18,7 +18,7 @@ export function Navigation() {
 
   return (
     <header className="topbar">
-      <Link className="brand" href="/deploy" aria-label="open-think deploy">
+      <Link className="brand" href="/" aria-label="open-think home">
         <span className="brand-mark" aria-hidden="true">
           <Workflow size={18} />
         </span>

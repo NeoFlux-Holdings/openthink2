@@ -5,6 +5,15 @@ import {
 } from "./cloud-agent-instance";
 import { ORCHESTRATOR_RUNTIME_SOURCE } from "./orchestrator-runtime-source";
 import {
+  PERSONA_APP_TSX,
+  PERSONA_COMPOSER_TSX,
+  PERSONA_HOME_TSX,
+  PERSONA_PAGES_CSS,
+  PERSONA_SHELL_CSS,
+  PERSONA_SHELL_TSX,
+  PERSONA_THREAD_FEED_TSX
+} from "./persona-shell-sources";
+import {
   normalizePersonalAgentConfig,
   personalAgentPublicConfigBindingText,
   publicPersonalAgentConfig
@@ -62,6 +71,38 @@ export function renderAgentsSdkPersonalAgentRuntime(
     {
       path: "src/client.tsx",
       contents: renderClientTsx(input)
+    },
+    {
+      path: "src/persona-shell.tsx",
+      contents: PERSONA_SHELL_TSX
+    },
+    {
+      path: "src/persona-shell.css",
+      contents: PERSONA_SHELL_CSS
+    },
+    {
+      path: "src/persona-app.tsx",
+      contents: PERSONA_APP_TSX
+    },
+    {
+      path: "src/persona-pages/index.ts",
+      contents: renderPersonaPagesIndexTs()
+    },
+    {
+      path: "src/persona-pages/persona-home.tsx",
+      contents: PERSONA_HOME_TSX
+    },
+    {
+      path: "src/persona-pages/persona-thread-feed.tsx",
+      contents: PERSONA_THREAD_FEED_TSX
+    },
+    {
+      path: "src/persona-pages/persona-composer.tsx",
+      contents: PERSONA_COMPOSER_TSX
+    },
+    {
+      path: "src/persona-pages/persona-pages.css",
+      contents: PERSONA_PAGES_CSS
     },
     {
       path: "src/orchestrator-runtime.ts",
@@ -250,6 +291,41 @@ function escapeHtml(value: string): string {
         return character;
     }
   });
+}
+
+/**
+ * Minimal `persona-pages` barrel for the deployed agent bundle. The
+ * starter's barrel also exports the Library/Skills/Settings/etc. pages
+ * that aren't shipped to deployed agents (their source files don't
+ * exist there). The Persona shell only depends on PersonaHome,
+ * PersonaThreadFeed, and PersonaComposer, so the deployed barrel
+ * re-exports just those three.
+ */
+function renderPersonaPagesIndexTs(): string {
+  return `// Auto-generated minimal Persona pages barrel for the deployed agent.
+export {
+  PersonaHome,
+  DEFAULT_QUICK_ACTIONS,
+  DEFAULT_TEMPLATES,
+  type PersonaComposeMode,
+  type PersonaHomeProps,
+  type PersonaQuickAction,
+  type PersonaRecentThread,
+  type PersonaTemplate
+} from "./persona-home";
+
+export {
+  PersonaThreadFeed,
+  type PersonaMessageAction,
+  type PersonaThreadFeedProps,
+  type PersonaThreadStatus
+} from "./persona-thread-feed";
+
+export {
+  PersonaComposer,
+  type PersonaComposerProps
+} from "./persona-composer";
+`;
 }
 
 function renderClientCss(): string {
@@ -1290,10 +1366,36 @@ const MarkdownRenderer = lazy(async () => {
 const clientConfig = ${JSON.stringify(clientConfig, null, 2)} as const;
 
 function App() {
+  // Persona 3-column shell is the default. Legacy single-pane chat is
+  // available via \`?shell=legacy\` for backwards compatibility.
+  const useLegacyShell =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("shell") === "legacy";
+  if (useLegacyShell) {
+    return (
+      <main className="app">
+        <Chat />
+      </main>
+    );
+  }
+  return <PersonaShellMount />;
+}
+
+const LazyPersonaApp = lazy(async () => {
+  await import("./persona-shell.css");
+  await import("./persona-pages/persona-pages.css");
+  const mod = await import("./persona-app");
+  return { default: mod.PersonaApp };
+});
+
+function PersonaShellMount() {
   return (
-    <main className="app">
-      <Chat />
-    </main>
+    <Suspense fallback={<main className="app"><div style={{ padding: 24 }}>Loading shell…</div></main>}>
+      <LazyPersonaApp
+        workspaceName={clientConfig.agentName}
+        defaultModel={clientConfig.defaultModel}
+      />
+    </Suspense>
   );
 }
 
