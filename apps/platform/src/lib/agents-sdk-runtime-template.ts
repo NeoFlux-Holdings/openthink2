@@ -3,6 +3,7 @@ import {
   buildCloudAgentInstanceProfile,
   cloudAgentGoalInstruction
 } from "./cloud-agent-instance";
+import { ORCHESTRATOR_RUNTIME_SOURCE } from "./orchestrator-runtime-source";
 import {
   normalizePersonalAgentConfig,
   personalAgentPublicConfigBindingText,
@@ -142,12 +143,22 @@ export function renderAgentsSdkWranglerJsonc(
     },
     ai: { binding: "AI" },
     durable_objects: {
-      bindings: [{ name: "PersonalChatAgent", class_name: "PersonalChatAgent" }]
+      bindings: [
+        { name: "PersonalChatAgent", class_name: "PersonalChatAgent" },
+        { name: "ORCHESTRATOR", class_name: "OrchestratorAgent" },
+        { name: "AGENT_CODER", class_name: "AgentCoder" },
+        { name: "AGENT_RESEARCHER", class_name: "AgentResearcher" }
+      ]
     },
     migrations: [
       {
         tag: `${input.deploymentId}-agents-sdk-v1`,
-        new_sqlite_classes: ["PersonalChatAgent"]
+        new_sqlite_classes: [
+          "PersonalChatAgent",
+          "OrchestratorAgent",
+          "AgentCoder",
+          "AgentResearcher"
+        ]
       }
     ],
     r2_buckets: [
@@ -3521,6 +3532,23 @@ createRoot(document.getElementById("root")!).render(<App />);
 `;
 }
 
+/**
+ * Renders the bundled orchestrator runtime module — a single self-contained
+ * TypeScript file that the generated server.ts imports as
+ * `./orchestrator-runtime`. The content is a direct inline of the
+ * @open-think/starter-personal-agent orchestrator/goal/skills/approval/
+ * code-mode/executor/evolve modules. Keeping it inline lets the deployed
+ * agent bundle stay standalone without pulling a workspace dependency.
+ *
+ * Mirror file in the starter:
+ *   starters/personal-agent/src/orchestrator-runtime.ts
+ *
+ * Any addition to one side should be mirrored on the other.
+ */
+function renderOrchestratorRuntimeTs(): string {
+  return ORCHESTRATOR_RUNTIME_SOURCE;
+}
+
 function renderServerTs(input: {
   request: DeploymentRequest;
   deploymentId: string;
@@ -3544,7 +3572,8 @@ function renderServerTs(input: {
 
   return `import { AIChatAgent } from "@cloudflare/ai-chat";
 import type { OnChatMessageOptions } from "@cloudflare/ai-chat";
-import { routeAgentRequest, type AgentContext } from "agents";
+import { Agent, routeAgentRequest, type AgentContext } from "agents";
+import { McpAgent } from "agents/mcp";
 import {
   convertToModelMessages,
   createUIMessageStream,
@@ -3565,6 +3594,16 @@ import {
 } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
+import {
+  buildOrchestratorSystemPrompt,
+  gateToolCall,
+  handleSlashCommand,
+  initOrchestrator,
+  recordTraceAndMaybeEvolve,
+  type AgentDescriptor,
+  type OrchestratorEnvBase,
+  type OrchestratorRuntime
+} from "./orchestrator-runtime";
 
 interface AssetBinding {
   fetch(request: Request): Promise<Response>;
@@ -4182,6 +4221,183 @@ export class PersonalChatAgent extends AIChatAgent<RuntimeEnv> {
 
   private get runtimeEnv(): RuntimeEnv {
     return this.agentEnv;
+  }
+}
+
+/**
+ * Default child agent descriptors registered on the orchestrator. Each
+ * descriptor's bindingName must match a wrangler durable_objects binding;
+ * unknown bindings are silently skipped by wireOrchestratorMcpRpc().
+ */
+const defaultChildDescriptors: AgentDescriptor[] = [
+  {
+    id: "child-coder",
+    workspaceId: "default",
+    role: "coder",
+    name: "coder",
+    description: "Writes and edits code; runs typecheck/test loops.",
+    bindingName: "AGENT_CODER",
+    enabledSkillIds: [],
+    pinned: true,
+    createdAt: new Date(0).toISOString()
+  },
+  {
+    id: "child-researcher",
+    workspaceId: "default",
+    role: "researcher",
+    name: "researcher",
+    description: "Investigates topics; gathers and summarizes sources.",
+    bindingName: "AGENT_RESEARCHER",
+    enabledSkillIds: [],
+    pinned: true,
+    createdAt: new Date(0).toISOString()
+  }
+];
+
+type OrchestratorEnv = RuntimeEnv & OrchestratorEnvBase;
+
+/**
+ * OrchestratorAgent — extends the Cloudflare Agents SDK Agent class so
+ * the openthink2 orchestrator layer (skills + approval + code-mode +
+ * executor + sub-agents + goals + evolve) is live in deployed agents.
+ *
+ * The class is intentionally thin: onStart() boots the runtime via
+ * initOrchestrator(), onMessage() routes /goal slash commands, and
+ * onRequest() exposes the /learning/* and /goals control endpoints.
+ */
+export class OrchestratorAgent extends Agent<OrchestratorEnv> {
+  private runtime: OrchestratorRuntime<OrchestratorEnv> | null = null;
+
+  async onStart(): Promise<void> {
+    this.runtime = await initOrchestrator<OrchestratorEnv>({
+      agent: {
+        env: this.env,
+        ctx: { storage: this.ctx.storage as never },
+        addMcpServer: (name: string, binding: unknown) =>
+          this.addMcpServer(name, binding as never)
+      },
+      children: defaultChildDescriptors
+    });
+  }
+
+  async onMessage(connection: { send(message: string): void }, message: unknown): Promise<void> {
+    if (!this.runtime) await this.onStart();
+    const text = typeof message === "string" ? message : "";
+    if (text) {
+      const slash = await handleSlashCommand(text, this.runtime!);
+      if (slash.handled) {
+        connection.send(JSON.stringify({ type: "slash-command", message: slash.message ?? "" }));
+        return;
+      }
+    }
+  }
+
+  async onRequest(request: Request): Promise<Response> {
+    if (!this.runtime) await this.onStart();
+    const runtime = this.runtime!;
+    const url = new URL(request.url);
+
+    if (url.pathname.endsWith("/learning/pending")) {
+      const suggestions = (await this.ctx.storage.get<unknown[]>("ws:suggestions")) ?? [];
+      return Response.json({ suggestions });
+    }
+
+    if (url.pathname.endsWith("/learning/decisions") && request.method === "GET") {
+      const decisions = (await this.ctx.storage.get<unknown[]>("ws:decisions")) ?? [];
+      return Response.json({ decisions });
+    }
+
+    if (url.pathname.endsWith("/learning/decisions") && request.method === "POST") {
+      const payload = await request.json().catch(() => ({}));
+      const decisions = ((await this.ctx.storage.get<unknown[]>("ws:decisions")) ?? []) as unknown[];
+      decisions.push({ ...(payload as Record<string, unknown>), recordedAt: new Date().toISOString() });
+      await this.ctx.storage.put("ws:decisions", decisions);
+      return Response.json({ ok: true, count: decisions.length });
+    }
+
+    if (url.pathname.endsWith("/learning/summary")) {
+      const suggestions = ((await this.ctx.storage.get<unknown[]>("ws:suggestions")) ?? []) as unknown[];
+      const decisions = ((await this.ctx.storage.get<unknown[]>("ws:decisions")) ?? []) as unknown[];
+      const traces = ((await this.ctx.storage.get<unknown[]>("ws:traces")) ?? []) as unknown[];
+      const systemPrompt = await buildOrchestratorSystemPrompt(runtime);
+      return Response.json({
+        pendingSuggestions: suggestions.length,
+        decisionCount: decisions.length,
+        traceCount: traces.length,
+        systemPromptPreview: systemPrompt.slice(0, 4000)
+      });
+    }
+
+    if (url.pathname.endsWith("/goals") && request.method === "GET") {
+      return Response.json({ goals: await runtime.goals.list() });
+    }
+
+    if (url.pathname.endsWith("/goals") && request.method === "POST") {
+      const payload = await request.json().catch(() => ({}));
+      const text = String((payload as { goal?: unknown; text?: unknown; message?: unknown }).goal ??
+        (payload as { goal?: unknown; text?: unknown; message?: unknown }).text ??
+        (payload as { goal?: unknown; text?: unknown; message?: unknown }).message ?? "");
+      const slash = await handleSlashCommand("/goal " + text, runtime);
+      return Response.json({ ok: slash.handled, message: slash.message ?? "" });
+    }
+
+    if (url.pathname.endsWith("/orchestrator/state")) {
+      return Response.json(await runtime.store.getContext());
+    }
+
+    if (url.pathname.endsWith("/orchestrator/approval/check") && request.method === "POST") {
+      const payload = await request.json().catch(() => ({}));
+      const toolName = String((payload as { toolName?: unknown }).toolName ?? "");
+      const decision = await gateToolCall(runtime, { toolName });
+      return Response.json(decision);
+    }
+
+    return Response.json({
+      runtime: "orchestrator-agent",
+      endpoints: [
+        "/learning/pending",
+        "/learning/decisions",
+        "/learning/summary",
+        "/goals",
+        "/orchestrator/state",
+        "/orchestrator/approval/check"
+      ]
+    });
+  }
+
+  async recordTrace(trace: Parameters<typeof recordTraceAndMaybeEvolve>[2]): Promise<{ evolved: boolean; suggestionCount: number }> {
+    if (!this.runtime) await this.onStart();
+    const llm = {
+      async summarize(_args: { system: string; user: string }) {
+        return JSON.stringify({ skills: [], rubrics: [], prompts: [] });
+      }
+    };
+    return recordTraceAndMaybeEvolve(this.runtime!, this.ctx.storage as never, trace, llm);
+  }
+}
+
+/**
+ * Stub child agent: scoped coder. The orchestrator wires this DO as an
+ * RPC MCP server via wireOrchestratorMcpRpc + addMcpServer. The base
+ * McpAgent class provides the RPC transport plumbing; deployments are
+ * expected to subclass and override to bind real tools.
+ */
+export class AgentCoder extends McpAgent<RuntimeEnv> {
+  server = { name: "agent-coder", version: "0.1.0" } as never;
+  async init(): Promise<void> {
+    // Subclasses register tools here. The stub keeps the binding alive so
+    // the orchestrator's RPC wiring succeeds even with no concrete tools.
+  }
+}
+
+/**
+ * Stub child agent: scoped researcher. See AgentCoder above for the
+ * extension contract.
+ */
+export class AgentResearcher extends McpAgent<RuntimeEnv> {
+  server = { name: "agent-researcher", version: "0.1.0" } as never;
+  async init(): Promise<void> {
+    // Subclasses register tools here.
   }
 }
 

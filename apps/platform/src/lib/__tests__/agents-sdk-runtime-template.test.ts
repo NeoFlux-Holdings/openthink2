@@ -40,6 +40,7 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
       "src/client-env.d.ts",
       "src/client.css",
       "src/client.tsx",
+      "src/orchestrator-runtime.ts",
       "src/server.ts"
     ]);
 
@@ -74,9 +75,17 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
     expect(wrangler.vars.OPEN_THINK_PERSONAL_AGENT_CONFIG).not.toContain("Prefer short answers.");
     expect(wrangler.vars.OPEN_THINK_PERSONAL_AGENT_CONFIG).not.toContain("inbox triage");
     expect(wrangler.durable_objects.bindings).toEqual([
-      { name: "PersonalChatAgent", class_name: "PersonalChatAgent" }
+      { name: "PersonalChatAgent", class_name: "PersonalChatAgent" },
+      { name: "ORCHESTRATOR", class_name: "OrchestratorAgent" },
+      { name: "AGENT_CODER", class_name: "AgentCoder" },
+      { name: "AGENT_RESEARCHER", class_name: "AgentResearcher" }
     ]);
-    expect(wrangler.migrations[0].new_sqlite_classes).toEqual(["PersonalChatAgent"]);
+    expect(wrangler.migrations[0].new_sqlite_classes).toEqual([
+      "PersonalChatAgent",
+      "OrchestratorAgent",
+      "AgentCoder",
+      "AgentResearcher"
+    ]);
 
     const client = files.find((file) => file.path === "src/client.tsx")?.contents ?? "";
     expect(client).toContain('import { useAgent } from "agents/react"');
@@ -235,6 +244,19 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
     expect(source).toContain('transport: "websocket"');
     expect(source).toContain("Personal agent subsystem:");
     expect(source).toContain("/personal-agent/setup");
+    expect(source).toContain('import { Agent, routeAgentRequest, type AgentContext } from "agents"');
+    expect(source).toContain('import { McpAgent } from "agents/mcp"');
+    expect(source).toContain('from "./orchestrator-runtime"');
+    expect(source).toContain('initOrchestrator');
+    expect(source).toContain('handleSlashCommand');
+    expect(source).toContain('export class OrchestratorAgent extends Agent<OrchestratorEnv>');
+    expect(source).toContain('export class AgentCoder extends McpAgent<RuntimeEnv>');
+    expect(source).toContain('export class AgentResearcher extends McpAgent<RuntimeEnv>');
+    expect(source).toContain('defaultChildDescriptors');
+    expect(source).toContain('/learning/pending');
+    expect(source).toContain('/learning/decisions');
+    expect(source).toContain('/learning/summary');
+    expect(source).toContain('/goals');
     expect(
       ts.transpileModule(source, {
         compilerOptions: {
@@ -244,5 +266,13 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
         reportDiagnostics: true
       }).diagnostics ?? []
     ).toEqual([]);
+
+    const orchestratorRuntime = files.find((file) => file.path === "src/orchestrator-runtime.ts")?.contents ?? "";
+    expect(orchestratorRuntime).toContain("export async function initOrchestrator");
+    expect(orchestratorRuntime).toContain("export async function handleSlashCommand");
+    expect(orchestratorRuntime).toContain("export async function buildOrchestratorSystemPrompt");
+    expect(orchestratorRuntime).toContain("export async function gateToolCall");
+    expect(orchestratorRuntime).toContain("export async function recordTraceAndMaybeEvolve");
+    expect(orchestratorRuntime).toContain("export interface AgentDescriptor");
   });
 });
