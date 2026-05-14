@@ -23,4 +23,5 @@ export * from "./code-mode";
 export * from "./executor";
 export * from "./smithery";
 export * from "./learning-routes";
+export * from "./document-stream";
 export * from "./workflows";

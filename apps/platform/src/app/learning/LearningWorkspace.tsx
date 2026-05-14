@@ -10,6 +10,7 @@ import {
   X
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Streamdown } from "streamdown";
 
 /**
  * Learning page — surfaces the agent's accumulated skills, memories,
@@ -402,8 +403,11 @@ export function LearningWorkspace() {
                         {Math.round(sug.confidence * 100)}% confidence · {sug.createdAt}
                       </span>
                     </div>
-                    <div style={{ marginTop: 8, fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                      {sug.detail}
+                    <div
+                      className="learning-detail"
+                      style={{ marginTop: 8, fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.45 }}
+                    >
+                      <Streamdown controls={false}>{sug.detail}</Streamdown>
                     </div>
                     <div
                       style={{
