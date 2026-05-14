@@ -2481,6 +2481,464 @@ export function supportsHibernation(ws: unknown): ws is HibernatableWebSocket {
   );
 }
 
+// === starters/personal-agent/src/invocations-routes.ts ===
+/**
+ * Framework-agnostic Invocations routes for the deployed agent.
+ *
+ * Routes the Persona Invocations page consumes:
+ *   - GET  /invocations               → { invocations, summary }
+ *   - GET  /invocations/:id           → single invocation detail
+ *   - GET  /invocations/summary       → aggregate counters
+ *   - POST /invocations               → record one (agents call this on
+ *                                       turn completion; we don't
+ *                                       require it — the evolve loop
+ *                                       writes via the same store)
+ *
+ * Data is whatever lives at \`ws:traces\` (the same key the evolve
+ * loop already writes). We project each \`RunTrace\` into an
+ * \`InvocationRecord\` so the UI has cost / model / duration without
+ * the page needing to know the evolve internals.
+ */
+
+export interface InvocationRecord {
+  id: string;
+  threadId: string;
+  agentId: string;
+  agentName?: string;
+  model?: string;
+  startedAt: string;
+  endedAt?: string;
+  durationMs?: number;
+  toolsUsed: string[];
+  toolCallCount: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+  outcome: RunTrace["outcome"];
+  userFeedback?: RunTrace["userFeedback"];
+  goal: string;
+}
+
+export interface InvocationSummary {
+  totalRuns: number;
+  successCount: number;
+  partialCount: number;
+  failureCount: number;
+  abandonedCount: number;
+  averageDurationMs: number | null;
+  totalCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  /** Successful runs / total runs, in [0,1]; null when total=0. */
+  successRate: number | null;
+}
+
+export interface InvocationsStore {
+  list(options?: { limit?: number; cursor?: string }): Promise<InvocationRecord[]>;
+  get(id: string): Promise<InvocationRecord | null>;
+  record(input: Omit<InvocationRecord, "id">): Promise<InvocationRecord>;
+  clear(): Promise<void>;
+}
+
+interface DoStorageLike {
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  put<T = unknown>(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  list<T = unknown>(options?: { prefix?: string }): Promise<Map<string, T>>;
+}
+
+const STORAGE_KEY = "ws:invocations";
+
+export function createDoInvocationsStore(storage: DoStorageLike): InvocationsStore {
+  return {
+    async list(options = {}) {
+      const all = (await storage.get<InvocationRecord[]>(STORAGE_KEY)) ?? [];
+      return all.slice(-Math.max(1, options.limit ?? 100)).reverse();
+    },
+    async get(id) {
+      const all = (await storage.get<InvocationRecord[]>(STORAGE_KEY)) ?? [];
+      return all.find((r) => r.id === id) ?? null;
+    },
+    async record(input) {
+      const all = (await storage.get<InvocationRecord[]>(STORAGE_KEY)) ?? [];
+      const record: InvocationRecord = {
+        ...input,
+        id: \`inv-\${Date.now()}-\${Math.random().toString(36).slice(2, 8)}\`
+      };
+      const next = [...all, record].slice(-1000);
+      await storage.put(STORAGE_KEY, next);
+      return record;
+    },
+    async clear() {
+      await storage.delete(STORAGE_KEY);
+    }
+  };
+}
+
+/** Project RunTraces (written by recordTraceAndMaybeEvolve) into
+ *  InvocationRecords so the page can read both sources uniformly. */
+export function projectTracesToInvocations(traces: RunTrace[]): InvocationRecord[] {
+  return traces.map((t) => {
+    const record: InvocationRecord = {
+      id: t.id,
+      threadId: t.threadId,
+      agentId: t.agentId,
+      startedAt: t.startedAt,
+      toolsUsed: t.toolsUsed,
+      toolCallCount: t.toolsUsed.length,
+      outcome: t.outcome,
+      goal: t.goal
+    };
+    if (t.endedAt) {
+      record.endedAt = t.endedAt;
+      record.durationMs = Math.max(0, new Date(t.endedAt).getTime() - new Date(t.startedAt).getTime());
+    }
+    if (t.userFeedback) record.userFeedback = t.userFeedback;
+    return record;
+  });
+}
+
+export function summarize(records: InvocationRecord[]): InvocationSummary {
+  if (records.length === 0) {
+    return {
+      totalRuns: 0,
+      successCount: 0,
+      partialCount: 0,
+      failureCount: 0,
+      abandonedCount: 0,
+      averageDurationMs: null,
+      totalCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      successRate: null
+    };
+  }
+  let success = 0;
+  let partial = 0;
+  let failure = 0;
+  let abandoned = 0;
+  let durationSum = 0;
+  let durationCount = 0;
+  let costSum = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  for (const r of records) {
+    if (r.outcome === "success") success += 1;
+    else if (r.outcome === "partial") partial += 1;
+    else if (r.outcome === "failure") failure += 1;
+    else abandoned += 1;
+    if (typeof r.durationMs === "number") {
+      durationSum += r.durationMs;
+      durationCount += 1;
+    }
+    if (typeof r.costUsd === "number") costSum += r.costUsd;
+    if (typeof r.inputTokens === "number") inputTokens += r.inputTokens;
+    if (typeof r.outputTokens === "number") outputTokens += r.outputTokens;
+  }
+  return {
+    totalRuns: records.length,
+    successCount: success,
+    partialCount: partial,
+    failureCount: failure,
+    abandonedCount: abandoned,
+    averageDurationMs: durationCount > 0 ? durationSum / durationCount : null,
+    totalCostUsd: costSum,
+    totalInputTokens: inputTokens,
+    totalOutputTokens: outputTokens,
+    successRate: records.length > 0 ? success / records.length : null
+  };
+}
+
+export interface InvocationsRouteOptions {
+  store: InvocationsStore;
+}
+
+/** Returns a router function — null for non-matching requests. */
+export function createInvocationsRoute(
+  options: InvocationsRouteOptions
+): (request: Request) => Promise<Response | null> {
+  return async (request) => {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith("/invocations")) return null;
+
+    if (request.method === "GET" && url.pathname === "/invocations") {
+      const limit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
+      const records = await options.store.list({ limit });
+      return Response.json({ invocations: records, summary: summarize(records) });
+    }
+    if (request.method === "GET" && url.pathname === "/invocations/summary") {
+      const records = await options.store.list({ limit: 1000 });
+      return Response.json(summarize(records));
+    }
+    const match = /^\\/invocations\\/([^/]+)$/.exec(url.pathname);
+    if (request.method === "GET" && match) {
+      const record = await options.store.get(decodeURIComponent(match[1]!));
+      if (!record) return new Response("Not found", { status: 404 });
+      return Response.json(record);
+    }
+    if (request.method === "POST" && url.pathname === "/invocations") {
+      const body = (await request.json().catch(() => null)) as Omit<InvocationRecord, "id"> | null;
+      if (!body) return new Response("Invalid body", { status: 400 });
+      const record = await options.store.record(body);
+      return Response.json(record, { status: 201 });
+    }
+    return null;
+  };
+}
+
+// === starters/personal-agent/src/knowledge-routes.ts ===
+/**
+ * Framework-agnostic Knowledge routes for the deployed agent.
+ *
+ * Knowledge is a workspace-scoped list of URL bookmarks and uploaded
+ * files. Both surfaces feed the shared Vectorize memory
+ * (see shared-memory.ts) so the orchestrator can recall them at
+ * generation time without the page having to round-trip the vectors.
+ *
+ * Routes:
+ *   - GET    /knowledge                        → list (urls + files)
+ *   - POST   /knowledge/urls                   → add a URL bookmark
+ *   - DELETE /knowledge/urls/:id               → remove
+ *   - POST   /knowledge/files                  → upload (multipart/form)
+ *   - DELETE /knowledge/files/:id              → remove
+ *   - GET    /knowledge/search?q=…             → ranked text search
+ *
+ * The route handler is structural (returns \`Response | null\` for
+ * non-matches) so it composes with the other agent routes
+ * (learning-routes, document-stream).
+ */
+
+export interface UrlBookmark {
+  id: string;
+  kind: "url";
+  url: string;
+  title: string;
+  description?: string;
+  tags: string[];
+  addedAt: string;
+}
+
+export interface FileAttachment {
+  id: string;
+  kind: "file";
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  tags: string[];
+  /** Stored body location — either an R2 key or a data URL for
+   *  embed-on-ingest flows. The route handler doesn't read the body
+   *  itself, just records the pointer. */
+  storage: { type: "r2"; key: string } | { type: "inline"; preview: string };
+  /** Extracted text summary, used for search + embedding ingest. */
+  summary?: string;
+  addedAt: string;
+}
+
+export type KnowledgeEntry = UrlBookmark | FileAttachment;
+
+export interface KnowledgeStore {
+  list(): Promise<KnowledgeEntry[]>;
+  get(id: string): Promise<KnowledgeEntry | null>;
+  put(entry: KnowledgeEntry): Promise<KnowledgeEntry>;
+  remove(id: string): Promise<void>;
+  search(query: string, limit?: number): Promise<KnowledgeEntry[]>;
+}
+
+interface DoStorageLike {
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  put<T = unknown>(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  list<T = unknown>(options?: { prefix?: string }): Promise<Map<string, T>>;
+}
+
+const KNOWLEDGE_PREFIX = "knowledge:";
+
+export function createDoKnowledgeStore(storage: DoStorageLike): KnowledgeStore {
+  return {
+    async list() {
+      const map = await storage.list<KnowledgeEntry>({ prefix: KNOWLEDGE_PREFIX });
+      return Array.from(map.values()).sort((a, b) =>
+        new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()
+      );
+    },
+    async get(id) {
+      return (await storage.get<KnowledgeEntry>(KNOWLEDGE_PREFIX + id)) ?? null;
+    },
+    async put(entry) {
+      await storage.put(KNOWLEDGE_PREFIX + entry.id, entry);
+      return entry;
+    },
+    async remove(id) {
+      await storage.delete(KNOWLEDGE_PREFIX + id);
+    },
+    async search(query, limit = 24) {
+      const all = await this.list();
+      const q = query.trim().toLowerCase();
+      if (!q) return all.slice(0, limit);
+      const scored = all
+        .map((entry) => ({ entry, score: scoreEntry(entry, q) }))
+        .filter((s) => s.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map((s) => s.entry);
+      return scored;
+    }
+  };
+}
+
+function scoreEntry(entry: KnowledgeEntry, query: string): number {
+  const targets: string[] = [];
+  if (entry.kind === "url") {
+    targets.push(entry.title.toLowerCase(), entry.url.toLowerCase());
+    if (entry.description) targets.push(entry.description.toLowerCase());
+  } else {
+    targets.push(entry.name.toLowerCase());
+    if (entry.summary) targets.push(entry.summary.toLowerCase());
+  }
+  targets.push(...entry.tags.map((t) => t.toLowerCase()));
+
+  let score = 0;
+  for (const target of targets) {
+    if (target === query) score += 4;
+    else if (target.startsWith(query)) score += 2;
+    else if (target.includes(query)) score += 1;
+  }
+  return score;
+}
+
+/** Memory-backed Vectorize ingest hook. Optional — when present, every
+ *  put() also writes an embedding to the shared workspace memory. */
+export interface KnowledgeIngestHook {
+  upsert(entry: KnowledgeEntry, text: string): Promise<void>;
+  remove(id: string): Promise<void>;
+}
+
+export function wrapWithIngest(store: KnowledgeStore, ingest: KnowledgeIngestHook): KnowledgeStore {
+  return {
+    list: () => store.list(),
+    get: (id) => store.get(id),
+    async put(entry) {
+      const saved = await store.put(entry);
+      const text = (() => {
+        if (entry.kind === "url") {
+          return [entry.title, entry.description, ...entry.tags].filter(Boolean).join("\\n");
+        }
+        return [entry.name, entry.summary, ...entry.tags].filter(Boolean).join("\\n");
+      })();
+      try {
+        await ingest.upsert(saved, text);
+      } catch {
+        // Ingest is best-effort; the bookmark stays even if embedding fails.
+      }
+      return saved;
+    },
+    async remove(id) {
+      await store.remove(id);
+      try {
+        await ingest.remove(id);
+      } catch {
+        // ignore
+      }
+    },
+    search: (query, limit) => store.search(query, limit)
+  };
+}
+
+export interface KnowledgeRouteOptions {
+  store: KnowledgeStore;
+  uploadHandler?: (file: { name: string; mimeType: string; sizeBytes: number; arrayBuffer: ArrayBuffer }) => Promise<{ type: "r2"; key: string } | { type: "inline"; preview: string }>;
+}
+
+export function createKnowledgeRoute(
+  options: KnowledgeRouteOptions
+): (request: Request) => Promise<Response | null> {
+  return async (request) => {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith("/knowledge")) return null;
+
+    if (request.method === "GET" && url.pathname === "/knowledge") {
+      const entries = await options.store.list();
+      return Response.json({ entries });
+    }
+    if (request.method === "GET" && url.pathname === "/knowledge/search") {
+      const q = url.searchParams.get("q") ?? "";
+      const limit = Number.parseInt(url.searchParams.get("limit") ?? "24", 10);
+      const entries = await options.store.search(q, limit);
+      return Response.json({ entries });
+    }
+    if (request.method === "POST" && url.pathname === "/knowledge/urls") {
+      const body = (await request.json().catch(() => null)) as Partial<UrlBookmark> | null;
+      if (!body?.url) return new Response("\`url\` is required", { status: 400 });
+      try {
+        new URL(body.url);
+      } catch {
+        return new Response("Invalid URL", { status: 400 });
+      }
+      const bookmark: UrlBookmark = {
+        id: \`bm-\${Date.now()}-\${Math.random().toString(36).slice(2, 8)}\`,
+        kind: "url",
+        url: body.url,
+        title: body.title?.trim() || new URL(body.url).hostname,
+        tags: Array.isArray(body.tags) ? body.tags : [],
+        addedAt: new Date().toISOString()
+      };
+      if (body.description) bookmark.description = body.description;
+      const saved = await options.store.put(bookmark);
+      return Response.json(saved, { status: 201 });
+    }
+    const urlDelete = /^\\/knowledge\\/urls\\/([^/]+)$/.exec(url.pathname);
+    if (request.method === "DELETE" && urlDelete) {
+      await options.store.remove(decodeURIComponent(urlDelete[1]!));
+      return new Response(null, { status: 204 });
+    }
+    if (request.method === "POST" && url.pathname === "/knowledge/files") {
+      const form = await request.formData().catch(() => null);
+      const file = form?.get("file");
+      if (!file || !(file instanceof File)) return new Response("\`file\` is required", { status: 400 });
+      const buffer = await file.arrayBuffer();
+      const storage = options.uploadHandler
+        ? await options.uploadHandler({
+            name: file.name,
+            mimeType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
+            arrayBuffer: buffer
+          })
+        : ({ type: "inline" as const, preview: await previewFromBuffer(buffer, file.type) });
+      const attachment: FileAttachment = {
+        id: \`at-\${Date.now()}-\${Math.random().toString(36).slice(2, 8)}\`,
+        kind: "file",
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        sizeBytes: file.size,
+        tags: ((form?.get("tags") as string | null) ?? "")
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+        storage,
+        addedAt: new Date().toISOString()
+      };
+      const summary = (form?.get("summary") as string | null)?.trim();
+      if (summary) attachment.summary = summary;
+      const saved = await options.store.put(attachment);
+      return Response.json(saved, { status: 201 });
+    }
+    const fileDelete = /^\\/knowledge\\/files\\/([^/]+)$/.exec(url.pathname);
+    if (request.method === "DELETE" && fileDelete) {
+      await options.store.remove(decodeURIComponent(fileDelete[1]!));
+      return new Response(null, { status: 204 });
+    }
+    return null;
+  };
+}
+
+async function previewFromBuffer(buffer: ArrayBuffer, mimeType: string): Promise<string> {
+  if (mimeType.startsWith("text/") || mimeType.includes("json") || mimeType.includes("xml")) {
+    const text = new TextDecoder("utf-8", { fatal: false }).decode(buffer.slice(0, 4096));
+    return text;
+  }
+  return \`[\${buffer.byteLength.toLocaleString()} bytes \${mimeType || "binary"}]\`;
+}
+
 // === starters/personal-agent/src/orchestrator/types.ts ===
 /**
  * Orchestrator & workspace types.

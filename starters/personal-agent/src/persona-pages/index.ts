@@ -78,3 +78,17 @@ export {
   type VoiceConsoleProps,
   type VoiceConsoleSettings
 } from "./voice-console";
+
+export {
+  InvocationsPage,
+  type InvocationViewModel,
+  type InvocationsPageProps,
+  type InvocationsSummaryModel
+} from "./invocations-page";
+
+export {
+  KnowledgePage,
+  type KnowledgeKind,
+  type KnowledgePageProps,
+  type KnowledgeView
+} from "./knowledge-page";

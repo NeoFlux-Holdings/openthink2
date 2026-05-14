@@ -28,3 +28,5 @@ export * from "./workflows";
 export * from "./propose-pr";
 export * from "./voice";
 export * from "./hibernation";
+export * from "./invocations-routes";
+export * from "./knowledge-routes";
