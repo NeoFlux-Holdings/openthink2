@@ -8,6 +8,7 @@ import type {
   BrowserData,
   ChartData,
   CodeData,
+  DiffData,
   DocumentData,
   ImageData,
   PersonaArtifactKind,
@@ -19,6 +20,7 @@ import type {
 import { BrowserView } from "./browser-view";
 import { ChartView } from "./chart-view";
 import { CodeView } from "./code-view";
+import { DiffView } from "./diff-view";
 import { DocumentView } from "./document-view";
 import { ImageView } from "./image-view";
 import { SlidesView } from "./slides-view";
@@ -52,6 +54,8 @@ export function viewKey(kind: PersonaArtifactKind): string {
       return "image-view";
     case "chart":
       return "chart-view";
+    case "diff":
+      return "diff-view";
   }
 }
 
@@ -81,6 +85,8 @@ export function ArtifactRouter(props: ArtifactRouterProps) {
       return <ImageView data={data as ImageData | undefined} />;
     case "chart":
       return <ChartView data={data as ChartData | undefined} />;
+    case "diff":
+      return <DiffView data={data as DiffData | undefined} />;
   }
 }
 

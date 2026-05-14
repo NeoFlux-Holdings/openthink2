@@ -25,3 +25,4 @@ export * from "./smithery";
 export * from "./learning-routes";
 export * from "./document-stream";
 export * from "./workflows";
+export * from "./propose-pr";

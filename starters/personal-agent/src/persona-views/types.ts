@@ -86,6 +86,15 @@ export interface ChartData {
   label?: string;
 }
 
+export interface DiffData {
+  before: string;
+  after: string;
+  /** Optional filename for the header. */
+  filename?: string;
+  /** Optional language hint for syntax-aware splits (we don't tokenize today — for future). */
+  language?: string;
+}
+
 /** Discriminated payload union, keyed by `PersonaArtifactKind`. */
 export type ArtifactData =
   | { kind: "document"; data: DocumentData }
@@ -95,4 +104,5 @@ export type ArtifactData =
   | { kind: "slides"; data: SlidesData }
   | { kind: "table"; data: TableData }
   | { kind: "image"; data: ImageData }
-  | { kind: "chart"; data: ChartData };
+  | { kind: "chart"; data: ChartData }
+  | { kind: "diff"; data: DiffData };

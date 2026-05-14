@@ -78,14 +78,20 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
       { name: "PersonalChatAgent", class_name: "PersonalChatAgent" },
       { name: "ORCHESTRATOR", class_name: "OrchestratorAgent" },
       { name: "AGENT_CODER", class_name: "AgentCoder" },
-      { name: "AGENT_RESEARCHER", class_name: "AgentResearcher" }
+      { name: "AGENT_RESEARCHER", class_name: "AgentResearcher" },
+      { name: "AGENT_BROWSER", class_name: "AgentBrowser" }
     ]);
     expect(wrangler.migrations[0].new_sqlite_classes).toEqual([
       "PersonalChatAgent",
       "OrchestratorAgent",
       "AgentCoder",
-      "AgentResearcher"
+      "AgentResearcher",
+      "AgentBrowser"
     ]);
+    expect(wrangler.kv_namespaces).toEqual([
+      { binding: "WORKSPACE_FILES", id: "replace-me" }
+    ]);
+    expect(wrangler["//browser"]).toContain("Browser Rendering");
 
     const client = files.find((file) => file.path === "src/client.tsx")?.contents ?? "";
     expect(client).toContain('import { useAgent } from "agents/react"');
@@ -252,6 +258,33 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
     expect(source).toContain('export class OrchestratorAgent extends Agent<OrchestratorEnv>');
     expect(source).toContain('export class AgentCoder extends McpAgent<RuntimeEnv>');
     expect(source).toContain('export class AgentResearcher extends McpAgent<RuntimeEnv>');
+    expect(source).toContain('export class AgentBrowser extends McpAgent<RuntimeEnv>');
+    expect(source).toContain('from "@modelcontextprotocol/sdk/server/mcp.js"');
+    expect(source).toContain('new McpServer({ name: "agent-coder"');
+    expect(source).toContain('new McpServer({ name: "agent-researcher"');
+    expect(source).toContain('new McpServer({ name: "agent-browser"');
+    expect(source).toContain('createProposePr');
+    expect(source).toContain('server.tool(\n      "read_file"');
+    expect(source).toContain('server.tool(\n      "write_file"');
+    expect(source).toContain('server.tool(\n      "list_files"');
+    expect(source).toContain('server.tool(\n      "propose_pr"');
+    expect(source).toContain('server.tool(\n      "run_in_sandbox"');
+    expect(source).toContain('server.tool(\n      "web_search"');
+    expect(source).toContain('server.tool(\n      "fetch_url"');
+    expect(source).toContain('server.tool(\n      "summarize"');
+    expect(source).toContain('server.tool(\n      "navigate"');
+    expect(source).toContain('server.tool(\n      "screenshot"');
+    expect(source).toContain('server.tool(\n      "extract_text"');
+    expect(source).toContain('WORKSPACE_FILES KV binding is not configured');
+    expect(source).toContain('SANDBOX binding is not configured');
+    expect(source).toContain('BROWSER binding (Cloudflare Browser Rendering)');
+    expect(source).toContain('Web search requires AI_GATEWAY or BROWSER binding');
+    expect(source).toContain('OPEN_THINK_GITHUB_TOKEN');
+    expect(source).toContain('OPEN_THINK_PR_TARGET_OWNER');
+    expect(source).toContain('OPEN_THINK_PR_TARGET_REPO');
+    expect(source).toContain('OPEN_THINK_PR_BASE_BRANCH');
+    expect(source).toContain('AGENT_BROWSER');
+    expect(source).toContain('child-browser');
     expect(source).toContain('defaultChildDescriptors');
     expect(source).toContain('/learning/pending');
     expect(source).toContain('/learning/decisions');

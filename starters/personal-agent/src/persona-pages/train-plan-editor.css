@@ -1,0 +1,370 @@
+/*
+ * Train-mode plan editor — styles for the draft-plan card list.
+ *
+ * Follows the same variables-with-fallbacks convention as
+ * persona-pages.css and persona-shell.css so the editor renders
+ * standalone when dropped into a different app.
+ *
+ * The "draft" treatment is a dashed border + slightly inset
+ * background — visually distinct from the regular Persona pages so
+ * users always know they're looking at a plan that hasn't run yet.
+ */
+
+.persona-train {
+  /* Inherit the persona-page variables (set on .persona-page) but
+   * override the framing to read as a draft surface. */
+  border: 1.5px dashed var(--persona-line-strong, rgba(21, 23, 22, 0.18));
+  border-radius: var(--persona-radius, 12px);
+  background: color-mix(
+    in srgb,
+    var(--persona-surface, #ffffff) 78%,
+    var(--persona-bg, #f5f5f4) 22%
+  );
+  padding: 22px 24px;
+  gap: 14px;
+}
+
+.persona-train[data-busy="true"] {
+  opacity: 0.78;
+  pointer-events: none;
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────── */
+
+.persona-train__header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "title actions"
+    "mode actions";
+  gap: 10px 16px;
+  align-items: center;
+}
+
+.persona-train__title {
+  grid-area: title;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.persona-train__title h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  color: var(--persona-ink-soft, #2f2f37);
+  font-weight: 500;
+}
+
+.persona-train__pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--persona-accent, #3a5bd7);
+  background: rgba(58, 91, 215, 0.08);
+  border: 1px solid rgba(58, 91, 215, 0.18);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.persona-train__mode {
+  grid-area: mode;
+  display: inline-flex;
+  border: 1px solid var(--persona-line, rgba(21, 23, 22, 0.08));
+  background: var(--persona-surface, #ffffff);
+  border-radius: 8px;
+  padding: 2px;
+  width: fit-content;
+}
+
+.persona-train__mode-option {
+  border: none;
+  background: transparent;
+  color: var(--persona-muted, #5e5e66);
+  font-size: 0.82rem;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.persona-train__mode-option.is-active {
+  background: var(--persona-bg, #f5f5f4);
+  color: var(--persona-ink, #15151a);
+  box-shadow: inset 0 0 0 1px var(--persona-line, rgba(21, 23, 22, 0.08));
+}
+
+.persona-train__mode-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.persona-train__actions {
+  grid-area: actions;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.persona-train__btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  cursor: pointer;
+  border: 1px solid var(--persona-line, rgba(21, 23, 22, 0.08));
+  background: var(--persona-surface, #ffffff);
+  color: var(--persona-ink-soft, #2f2f37);
+}
+
+.persona-train__btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.persona-train__btn--reject {
+  color: var(--persona-muted, #5e5e66);
+}
+
+.persona-train__btn--next {
+  border-color: rgba(58, 91, 215, 0.32);
+  color: var(--persona-accent, #3a5bd7);
+}
+
+.persona-train__btn--all {
+  background: var(--persona-accent, #3a5bd7);
+  border-color: var(--persona-accent, #3a5bd7);
+  color: #ffffff;
+}
+
+/* ─── List ───────────────────────────────────────────────────────────── */
+
+.persona-train__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  outline: none;
+}
+
+.persona-train__list:focus-visible {
+  box-shadow: 0 0 0 2px rgba(58, 91, 215, 0.25);
+  border-radius: var(--persona-radius, 12px);
+}
+
+.persona-train__row {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--persona-line, rgba(21, 23, 22, 0.08));
+  border-radius: 10px;
+  background: var(--persona-surface, #ffffff);
+  cursor: pointer;
+}
+
+.persona-train__row.is-selected {
+  border-color: var(--persona-accent, #3a5bd7);
+  box-shadow: 0 0 0 1px rgba(58, 91, 215, 0.18);
+}
+
+.persona-train__row.is-drop-target {
+  border-color: var(--persona-accent, #3a5bd7);
+  border-style: dashed;
+  background: rgba(58, 91, 215, 0.05);
+}
+
+.persona-train__row.is-dragging {
+  opacity: 0.4;
+}
+
+.persona-train__row.is-status-complete {
+  background: color-mix(in srgb, var(--persona-surface, #ffffff) 88%, #2f8f4f 12%);
+}
+
+.persona-train__row.is-status-error {
+  background: color-mix(in srgb, var(--persona-surface, #ffffff) 88%, #c44 12%);
+}
+
+.persona-train__row.is-status-skipped {
+  opacity: 0.6;
+}
+
+.persona-train__handle {
+  color: var(--persona-muted, #5e5e66);
+  cursor: grab;
+  font-size: 0.85rem;
+  user-select: none;
+  line-height: 1.5;
+}
+
+.persona-train__row.is-dragging .persona-train__handle {
+  cursor: grabbing;
+}
+
+.persona-train__index {
+  font-variant-numeric: tabular-nums;
+  color: var(--persona-muted, #5e5e66);
+  font-size: 0.82rem;
+  padding-top: 1px;
+}
+
+/* ─── Status glyphs ──────────────────────────────────────────────────── */
+
+.persona-train__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 0.78rem;
+  color: var(--persona-muted, #5e5e66);
+  margin-top: 1px;
+}
+
+.persona-train__status--complete { color: #2f8f4f; }
+.persona-train__status--error { color: #c44; font-weight: 700; }
+
+.persona-train__status--running .persona-train__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--persona-accent, #3a5bd7);
+  animation: persona-train-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes persona-train-pulse {
+  0%, 100% { transform: scale(0.7); opacity: 0.5; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+
+/* ─── Body / inline edit ─────────────────────────────────────────────── */
+
+.persona-train__body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.persona-train__title-btn,
+.persona-train__detail-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: text;
+  width: 100%;
+}
+
+.persona-train__title-btn {
+  font-size: 0.94rem;
+  color: var(--persona-ink, #15151a);
+  line-height: 1.35;
+}
+
+.persona-train__detail-btn {
+  font-size: 0.82rem;
+  color: var(--persona-ink-soft, #2f2f37);
+  line-height: 1.4;
+}
+
+.persona-train__placeholder {
+  color: var(--persona-muted, #5e5e66);
+  font-style: italic;
+}
+
+.persona-train__title-input,
+.persona-train__detail-input {
+  width: 100%;
+  border: 1px solid var(--persona-line-strong, rgba(21, 23, 22, 0.18));
+  background: var(--persona-bg, #f5f5f4);
+  color: var(--persona-ink, #15151a);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font: inherit;
+  resize: vertical;
+}
+
+.persona-train__title-input { font-size: 0.94rem; }
+.persona-train__detail-input { font-size: 0.82rem; min-height: 44px; }
+
+/* ─── Chips / errors / delete / footer ───────────────────────────────── */
+
+.persona-train__chips {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.persona-train__chip {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(58, 91, 215, 0.08);
+  color: var(--persona-accent, #3a5bd7);
+  font-variant-numeric: tabular-nums;
+}
+
+.persona-train__error {
+  margin: 4px 0 0;
+  color: #c44;
+  font-size: 0.78rem;
+}
+
+.persona-train__delete {
+  border: none;
+  background: transparent;
+  color: var(--persona-muted, #5e5e66);
+  font-size: 1.05rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  align-self: start;
+}
+
+.persona-train__delete:hover { color: #c44; }
+.persona-train__delete:disabled { cursor: not-allowed; opacity: 0.4; }
+
+.persona-train__empty {
+  padding: 20px;
+  border: 1px dashed var(--persona-line, rgba(21, 23, 22, 0.08));
+  border-radius: 10px;
+  color: var(--persona-muted, #5e5e66);
+  text-align: center;
+  font-size: 0.86rem;
+}
+
+.persona-train__add {
+  justify-self: start;
+  border: 1px dashed var(--persona-line-strong, rgba(21, 23, 22, 0.18));
+  background: transparent;
+  color: var(--persona-muted, #5e5e66);
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.persona-train__add:hover:not(:disabled) {
+  color: var(--persona-accent, #3a5bd7);
+  border-color: var(--persona-accent, #3a5bd7);
+}
+
+.persona-train__add:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.persona-train__hint {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--persona-muted, #5e5e66);
+}

@@ -57,3 +57,15 @@ export {
   type SearchTab,
   type SearchThreadHit
 } from "./search-palette";
+
+export {
+  TrainPlanEditor,
+  addStep,
+  removeStep,
+  reorderSteps,
+  updateStep,
+  type PlanStep,
+  type PlanStepStatus,
+  type TrainPlanEditorProps,
+  type TrainPlanMode
+} from "./train-plan-editor";

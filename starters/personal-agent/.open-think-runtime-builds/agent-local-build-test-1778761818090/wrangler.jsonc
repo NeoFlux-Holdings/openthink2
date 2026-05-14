@@ -1,0 +1,95 @@
+{
+  "name": "open-think-local-build-test",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-05-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "directory": "dist/client",
+    "binding": "ASSETS"
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PersonalChatAgent",
+        "class_name": "PersonalChatAgent"
+      },
+      {
+        "name": "ORCHESTRATOR",
+        "class_name": "OrchestratorAgent"
+      },
+      {
+        "name": "AGENT_CODER",
+        "class_name": "AgentCoder"
+      },
+      {
+        "name": "AGENT_RESEARCHER",
+        "class_name": "AgentResearcher"
+      },
+      {
+        "name": "AGENT_BROWSER",
+        "class_name": "AgentBrowser"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "agent-local-build-test-agents-sdk-v1",
+      "new_sqlite_classes": [
+        "PersonalChatAgent",
+        "OrchestratorAgent",
+        "AgentCoder",
+        "AgentResearcher",
+        "AgentBrowser"
+      ]
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "WORKSPACE_FILES",
+      "id": "replace-me"
+    }
+  ],
+  "//browser": "To enable Cloudflare Browser Rendering for AgentBrowser, add: \"browser\": { \"binding\": \"BROWSER\" }. Requires Browser Rendering on the account.",
+  "r2_buckets": [
+    {
+      "binding": "AGENT_STORAGE",
+      "bucket_name": "bucket"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "db",
+      "database_id": "db-id"
+    }
+  ],
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "vector"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "TASK_QUEUE",
+        "queue": "queue"
+      }
+    ]
+  },
+  "vars": {
+    "OPEN_THINK_DEPLOYMENT_ID": "agent-local-build-test",
+    "OPEN_THINK_STARTER": "personal-agent",
+    "OPEN_THINK_AGENT_NAME": "Local SDK Agent",
+    "OPEN_THINK_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.6",
+    "OPEN_THINK_PERSONAL_AGENT_CONFIG": "{\"enabled\":true,\"presetId\":\"openthink-gbrain-gstack\",\"label\":\"OpenThink gbrain + gstack\",\"stack\":\"gstack\",\"brain\":\"gbrain\",\"summary\":\"Cloudflare-native second brain using D1 memory, R2 files, Queue tasks, Vectorize semantic recall, MCP tools, and runtime setup state.\",\"setupKind\":\"native\",\"advancedMode\":false,\"features\":{\"coreMemory\":true,\"profileMemory\":true,\"episodicMemory\":true,\"semanticMemory\":true,\"knowledgeGraph\":false,\"mcpBridge\":true,\"taskQueue\":true,\"fileWorkspace\":true,\"proactiveRoutines\":true,\"browserAutomation\":false,\"multiAgent\":false,\"localFirst\":false,\"healthTracking\":false},\"enabledFeatures\":[\"coreMemory\",\"profileMemory\",\"episodicMemory\",\"semanticMemory\",\"mcpBridge\",\"taskQueue\",\"fileWorkspace\",\"proactiveRoutines\"],\"setupSteps\":[\"Create personal_agent_setup in D1\",\"Seed the selected brain/stack profile into D1 memory\",\"Expose the profile through health, manifest, runtime context, and chat instructions\"],\"setupStatus\":\"complete\",\"toolApprovalPolicy\":\"ask-every-time\",\"soulPromptConfigured\":false,\"launchBriefConfigured\":false}",
+    "OPEN_THINK_TOOL_APPROVAL_POLICY": "ask-every-time",
+    "OPEN_THINK_CF_ACCOUNT_ID": "account-id",
+    "OPEN_THINK_SOURCE_SHA": "source-sha"
+  }
+}

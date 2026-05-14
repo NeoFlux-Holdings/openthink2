@@ -1,0 +1,32 @@
+{
+  "name": "open-think-personal-agent-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build --outDir dist/client --emptyOutDir",
+    "dev": "vite build --outDir dist/client --emptyOutDir && wrangler dev",
+    "deploy": "vite build --outDir dist/client --emptyOutDir && wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^3.0.0",
+    "@cloudflare/ai-chat": "^0.6.2",
+    "@cloudflare/think": "^0.4.2",
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "agents": "^0.12.4",
+    "ai": "^6.0.174",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "streamdown": "^2.5.0",
+    "zod": "^4.4.2",
+    "workers-ai-provider": "^3.1.13"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "wrangler": "latest"
+  }
+}

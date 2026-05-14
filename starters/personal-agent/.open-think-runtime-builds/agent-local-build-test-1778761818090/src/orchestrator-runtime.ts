@@ -1,15 +1,4 @@
-// Auto-generated. Do not edit by hand.
-// Run `node tools/regen-orchestrator-runtime-source.mjs` to regenerate.
-// Source: starters/personal-agent/src/orchestrator-runtime.ts and its transitive
-//         `export *` imports.
-//
-// This module exports the inlined source text of the orchestrator runtime
-// that the agents-sdk-runtime-template emits into generated user-agent
-// Workers. Keeping the source as a single TypeScript string constant lets
-// the template renderer ship the runtime without taking a workspace
-// dependency on @open-think/starter-personal-agent.
-
-export const ORCHESTRATOR_RUNTIME_SOURCE = `/**
+/**
  * orchestrator-runtime — bundled, standalone runtime module emitted into
  * generated user-agent Workers.
  *
@@ -60,11 +49,11 @@ interface DoStorageLike {
  * user-agent Worker.
  *
  * The generated agent Worker (see apps/platform/src/lib/agents-sdk-runtime-template.ts)
- * imports the orchestrator runtime helpers from a sibling \`./orchestrator-runtime\`
+ * imports the orchestrator runtime helpers from a sibling `./orchestrator-runtime`
  * module. This file is the in-starter source of truth for those re-exports;
  * the platform's runtime template emits a standalone copy alongside the
  * generated server.ts so the deployed bundle does not depend on the
- * \`@open-think/starter-personal-agent\` workspace package.
+ * `@open-think/starter-personal-agent` workspace package.
  *
  * Keep this file as a single barrel — no logic — so the template renderer
  * can predict its shape and so additions on the orchestrator side flow
@@ -85,7 +74,7 @@ interface DoStorageLike {
  *   - sub-agents      (RPC MCP via addMcpServer)
  *   - goals + evolve  (orchestrator working doc, /goal command, evolve loop)
  *
- * Imports from \`agents\` (the Cloudflare SDK) are kept inside a tiny
+ * Imports from `agents` (the Cloudflare SDK) are kept inside a tiny
  * shim so this file typechecks before the agents@^0.12.4 types are
  * installed. The actual concrete Agent class is plugged in at runtime
  * via the deployed agent worker template.
@@ -153,7 +142,7 @@ export interface OrchestratorRuntime<TEnv extends OrchestratorEnvBase> {
 
 /**
  * One-shot initializer the deployed OrchestratorAgent calls from
- * \`onStart()\`. Returns the runtime handles so the agent can keep
+ * `onStart()`. Returns the runtime handles so the agent can keep
  * using them on subsequent requests.
  */
 export async function initOrchestrator<TEnv extends OrchestratorEnvBase>(
@@ -275,17 +264,17 @@ export async function buildOrchestratorSystemPrompt(
   if (skillsBlock) sections.push(skillsBlock);
   if (codeMode.enabled) sections.push(codeMode.systemPromptFragment);
   if (ctx.workingDoc) {
-    sections.push(\`# Working doc\\n\${ctx.workingDoc}\`);
+    sections.push(`# Working doc\n${ctx.workingDoc}`);
   }
   if (ctx.goals.length > 0) {
     const goalLines = ctx.goals
       .filter((g) => g.status === "active")
-      .map((g) => \`  • \${g.title}\`);
+      .map((g) => `  • ${g.title}`);
     if (goalLines.length > 0) {
-      sections.push(\`# Active goals\\n\${goalLines.join("\\n")}\`);
+      sections.push(`# Active goals\n${goalLines.join("\n")}`);
     }
   }
-  return sections.join("\\n\\n");
+  return sections.join("\n\n");
 }
 
 /**
@@ -345,7 +334,7 @@ export async function recordTraceAndMaybeEvolve(
  * Used by the orchestrator to track the user's active objective(s).
  * Goals are persisted in the orchestrator's Durable Object storage
  * (via OrchestratorStateStore.upsertGoal). The /goal command is
- * routed through the chat composer when the user types \`/goal …\`,
+ * routed through the chat composer when the user types `/goal …`,
  * or invoked programmatically by sub-agents that need to record
  * progress for the orchestrator to surface in the working doc.
  */
@@ -378,10 +367,10 @@ export function parseGoalCommand(input: string): GoalCommand | null {
   if (tail === "" || tail === "list") return { kind: "list" };
   if (tail === "evolve") return { kind: "evolve" };
 
-  const completeMatch = /^complete\\s+(\\S+)$/.exec(tail);
+  const completeMatch = /^complete\s+(\S+)$/.exec(tail);
   if (completeMatch) return { kind: "complete", id: completeMatch[1]! };
 
-  const blockMatch = /^block\\s+(\\S+)(?:\\s+(.+))?$/.exec(tail);
+  const blockMatch = /^block\s+(\S+)(?:\s+(.+))?$/.exec(tail);
   if (blockMatch) {
     const cmd: GoalCommand = { kind: "block", id: blockMatch[1]! };
     if (blockMatch[2]) (cmd as { reason?: string }).reason = blockMatch[2];
@@ -422,7 +411,7 @@ export async function runGoalCommand(
   }
   if (command.kind === "set") {
     const record: GoalRecord = {
-      id: \`goal-\${Date.now()}\`,
+      id: `goal-${Date.now()}`,
       title: command.title,
       status: "active",
       updatedAt: new Date().toISOString()
@@ -430,18 +419,18 @@ export async function runGoalCommand(
     if (command.detail) record.detail = command.detail;
     await store.upsert(record);
     const goals = await store.list();
-    return { message: \`Goal set: \${record.title}\`, goals };
+    return { message: `Goal set: ${record.title}`, goals };
   }
   if (command.kind === "complete") {
     const current = (await store.list()).find((g) => g.id === command.id);
-    if (!current) return { message: \`No goal \${command.id}\`, goals: await store.list() };
+    if (!current) return { message: `No goal ${command.id}`, goals: await store.list() };
     const next: GoalRecord = { ...current, status: "done", updatedAt: new Date().toISOString() };
     await store.upsert(next);
-    return { message: \`Goal \${command.id} marked done.\`, goals: await store.list() };
+    return { message: `Goal ${command.id} marked done.`, goals: await store.list() };
   }
   if (command.kind === "block") {
     const current = (await store.list()).find((g) => g.id === command.id);
-    if (!current) return { message: \`No goal \${command.id}\`, goals: await store.list() };
+    if (!current) return { message: `No goal ${command.id}`, goals: await store.list() };
     const next: GoalRecord = {
       ...current,
       status: "blocked",
@@ -449,7 +438,7 @@ export async function runGoalCommand(
     };
     if (command.reason) next.blockedReason = command.reason;
     await store.upsert(next);
-    return { message: \`Goal \${command.id} blocked.\`, goals: await store.list() };
+    return { message: `Goal ${command.id} blocked.`, goals: await store.list() };
   }
   // evolve
   return {
@@ -460,12 +449,12 @@ export async function runGoalCommand(
 }
 
 function formatGoalList(goals: GoalRecord[]): string {
-  if (goals.length === 0) return "No active goals. Use \`/goal <title>\` to set one.";
+  if (goals.length === 0) return "No active goals. Use `/goal <title>` to set one.";
   const lines = goals.map((g) => {
     const tick = g.status === "done" ? "✓" : g.status === "blocked" ? "⊘" : "•";
-    return \`\${tick} \${g.id}  \${g.title}\${g.detail ? \` — \${g.detail}\` : ""}\`;
+    return `${tick} ${g.id}  ${g.title}${g.detail ? ` — ${g.detail}` : ""}`;
   });
-  return lines.join("\\n");
+  return lines.join("\n");
 }
 
 // === starters/personal-agent/src/skills/index.ts ===
@@ -532,12 +521,12 @@ export function evaluateApproval(
   config: ApprovalConfig,
   ctx: ApprovalDecisionContext
 ): ApprovalDecision {
-  const fullName = ctx.toolNamespace ? \`\${ctx.toolNamespace}.\${ctx.toolName}\` : ctx.toolName;
+  const fullName = ctx.toolNamespace ? `${ctx.toolNamespace}.${ctx.toolName}` : ctx.toolName;
   if (config.neverAllow.includes(fullName)) {
-    return { allow: false, reason: \`Blocked by neverAllow rule for \${fullName}\` };
+    return { allow: false, reason: `Blocked by neverAllow rule for ${fullName}` };
   }
   if (config.alwaysAllow.includes(fullName)) {
-    return { allow: true, reason: \`alwaysAllow rule for \${fullName}\` };
+    return { allow: true, reason: `alwaysAllow rule for ${fullName}` };
   }
 
   const overSpendThreshold =
@@ -553,7 +542,7 @@ export function evaluateApproval(
     if (overSpendThreshold) {
       return {
         allow: false,
-        reason: \`cost \${ctx.estimatedCostUsd!.toFixed(2)} USD exceeds requireApprovalOver\`
+        reason: `cost ${ctx.estimatedCostUsd!.toFixed(2)} USD exceeds requireApprovalOver`
       };
     }
     return { allow: true, reason: "full-auto" };
@@ -701,19 +690,19 @@ export function buildCodeModeInjection(
   const lines = [
     "## Code-mode tool execution",
     "When several tool calls share inputs or you need to fan out, you may emit a single fenced",
-    "\`\`\`code-mode\\\\nasync function plan({ tools, fetch }) { /* … */ }\\\\n\`\`\`",
+    "```code-mode\\nasync function plan({ tools, fetch }) { /* … */ }\\n```",
     "block. The harness will run it inside a sandboxed isolate with",
-    \`a \${config.maxRunMs}ms budget. Bound tools: \${config.allowMcpTools.join(", ")}.\`,
+    `a ${config.maxRunMs}ms budget. Bound tools: ${config.allowMcpTools.join(", ")}.`,
     approval.mode === "manual"
       ? "Approval mode is manual — the code-mode plan will still be reviewed before execution."
-      : \`Approval mode is \${approval.mode} — code-mode runs follow the same allow/deny rules.\`
+      : `Approval mode is ${approval.mode} — code-mode runs follow the same allow/deny rules.`
   ];
   if (config.policy === "assisted") {
     lines.push("Use code-mode when it is clearly more efficient; otherwise call tools one at a time.");
   } else {
     lines.push("Always emit a code-mode plan for tool execution.");
   }
-  return { enabled: true, systemPromptFragment: lines.join("\\n") };
+  return { enabled: true, systemPromptFragment: lines.join("\n") };
 }
 
 export interface CodeModeRunner {
@@ -820,7 +809,7 @@ export function buildExecutorMcpServerConfig(
   return {
     url: config.endpoint || DEFAULT_EXECUTOR_ENDPOINT,
     headers: {
-      Authorization: \`Bearer \${config.workosToken}\`,
+      Authorization: `Bearer ${config.workosToken}`,
       Accept: "text/event-stream",
       "Content-Type": "application/json",
       ...(config.defaultHeaders ?? {})
@@ -851,7 +840,7 @@ export async function probeExecutor(
     const response = await f(endpoint, {
       method: "POST",
       headers: {
-        Authorization: \`Bearer \${config.workosToken}\`,
+        Authorization: `Bearer ${config.workosToken}`,
         Accept: "application/json",
         "Content-Type": "application/json"
       },
@@ -861,13 +850,13 @@ export async function probeExecutor(
       return {
         ready: false,
         endpoint,
-        message: \`auth rejected (HTTP \${response.status}) — log in at executor.sh and refresh the token\`
+        message: `auth rejected (HTTP ${response.status}) — log in at executor.sh and refresh the token`
       };
     }
     return {
       ready: response.ok,
       endpoint,
-      message: response.ok ? "ok" : \`unexpected status \${response.status}\`
+      message: response.ok ? "ok" : `unexpected status ${response.status}`
     };
   } catch (error) {
     return {
@@ -899,8 +888,8 @@ export async function probeExecutor(
  *                                  inside the agent. Auth is a
  *                                  per-user Smithery API key.
  *
- * This file is a typed client + a \`buildSmitheryServerConfig\` helper
- * that returns the \`{ url, headers }\` shape \`addMcpServer()\` accepts.
+ * This file is a typed client + a `buildSmitheryServerConfig` helper
+ * that returns the `{ url, headers }` shape `addMcpServer()` accepts.
  *
  * Per-server install state (api keys, server settings) lives in
  * Durable Object storage via SmitheryStore.
@@ -922,13 +911,13 @@ export interface SmitheryServerDescriptor {
   /** Author / publisher. */
   author?: string;
   /** Direct URL of the canonical hosted endpoint, if known. Falls back
-   * to the convention \`https://server.smithery.ai/<qualifiedName>/mcp\`. */
+   * to the convention `https://server.smithery.ai/<qualifiedName>/mcp`. */
   endpointUrl?: string;
 }
 
 export interface SmitheryInstallation {
   qualifiedName: string;
-  /** Per-server configuration (e.g. \`{ token: "ghp_…" }\`). Encrypted
+  /** Per-server configuration (e.g. `{ token: "ghp_…" }`). Encrypted
    *  at rest by the deploying Worker — never stored in plaintext D1. */
   config: Record<string, unknown>;
   enabled: boolean;
@@ -936,7 +925,7 @@ export interface SmitheryInstallation {
 }
 
 export interface SmitheryClientConfig {
-  /** User's Smithery API key. Sent as \`Authorization: Bearer …\`. */
+  /** User's Smithery API key. Sent as `Authorization: Bearer …`. */
   apiKey: string;
   /** Registry endpoint. Defaults to https://server.smithery.ai. */
   registryBase?: string;
@@ -957,7 +946,7 @@ export function buildSmitheryServerConfig(input: {
     throw new Error("Smithery requires an API key — set OPEN_THINK_SMITHERY_API_KEY on the Worker.");
   }
   const base = input.registryBase ?? DEFAULT_SMITHERY_REGISTRY;
-  const url = new URL(\`\${base.replace(/\\/$/, "")}/\${input.qualifiedName}/mcp\`);
+  const url = new URL(`${base.replace(/\/$/, "")}/${input.qualifiedName}/mcp`);
   if (input.installation && Object.keys(input.installation.config).length > 0) {
     // Smithery accepts JSON-encoded base64 config as a query param so the
     // server knows what credentials to use without persisting state.
@@ -967,7 +956,7 @@ export function buildSmitheryServerConfig(input: {
   return {
     url: url.toString(),
     headers: {
-      Authorization: \`Bearer \${input.apiKey}\`,
+      Authorization: `Bearer ${input.apiKey}`,
       Accept: "text/event-stream",
       "Content-Type": "application/json"
     }
@@ -985,24 +974,24 @@ export function createSmitheryClient(config: SmitheryClientConfig): SmitheryClie
   const f = config.fetchImpl ?? fetch;
   const base = config.registryBase ?? DEFAULT_SMITHERY_REGISTRY;
   const headers: Record<string, string> = {
-    Authorization: \`Bearer \${config.apiKey}\`,
+    Authorization: `Bearer ${config.apiKey}`,
     Accept: "application/json"
   };
   return {
     async search(query, opts = {}) {
-      const url = new URL(\`\${base.replace(/\\/$/, "")}/registry/search\`);
+      const url = new URL(`${base.replace(/\/$/, "")}/registry/search`);
       if (query) url.searchParams.set("q", query);
       url.searchParams.set("limit", String(opts.limit ?? 24));
       const res = await f(url.toString(), { headers });
-      if (!res.ok) throw new Error(\`Smithery search failed: \${res.status}\`);
+      if (!res.ok) throw new Error(`Smithery search failed: ${res.status}`);
       const body = (await res.json()) as { servers?: SmitheryServerDescriptor[] };
       return body.servers ?? [];
     },
     async get(qualifiedName) {
-      const url = \`\${base.replace(/\\/$/, "")}/registry/servers/\${encodeURIComponent(qualifiedName)}\`;
+      const url = `${base.replace(/\/$/, "")}/registry/servers/${encodeURIComponent(qualifiedName)}`;
       const res = await f(url, { headers });
       if (res.status === 404) return null;
-      if (!res.ok) throw new Error(\`Smithery get failed: \${res.status}\`);
+      if (!res.ok) throw new Error(`Smithery get failed: ${res.status}`);
       return (await res.json()) as SmitheryServerDescriptor;
     }
   };
@@ -1086,7 +1075,7 @@ export async function buildSmitheryMountCalls(input: {
       if (input.registryBase) cfg.registryBase = input.registryBase;
       const built = buildSmitheryServerConfig(cfg);
       return {
-        name: \`smithery:\${i.qualifiedName}\`,
+        name: `smithery:${i.qualifiedName}`,
         url: built.url,
         headers: built.headers
       };
@@ -1099,21 +1088,21 @@ export async function buildSmitheryMountCalls(input: {
  * decision endpoints used by the platform's Learning page.
  *
  * The orchestrator's evolve loop persists suggestions to DO storage
- * under the key \`ws:suggestions\` (see
- * \`orchestrator/agent.ts:recordTraceAndMaybeEvolve\`). These routes are
+ * under the key `ws:suggestions` (see
+ * `orchestrator/agent.ts:recordTraceAndMaybeEvolve`). These routes are
  * the read/write surface over that key:
  *
  *   - GET  /learning/pending    → list pending suggestions
  *   - POST /learning/decisions  → accept / reject / edit a suggestion
  *   - GET  /learning/summary    → counts by status
  *
- * The router is kept narrow (\`get\` / \`post\`) so this file does not
+ * The router is kept narrow (`get` / `post`) so this file does not
  * bind to a specific HTTP framework. Callers wire it into whatever
- * router / \`fetch\` table the agent worker uses.
+ * router / `fetch` table the agent worker uses.
  */
 
 /** Storage shape provided by the agent's DO ctx. Identical to the
- * interface used in \`orchestrator/agent.ts\` — kept duplicated here so
+ * interface used in `orchestrator/agent.ts` — kept duplicated here so
  * this module has no cross-dependency on the orchestrator. */
 export interface DoStorageLike {
   get<T = unknown>(key: string): Promise<T | undefined>;
@@ -1122,15 +1111,15 @@ export interface DoStorageLike {
   list<T = unknown>(options?: { prefix?: string }): Promise<Map<string, T>>;
 }
 
-/** Minimal request shape — a subset of the Web \`Request\` interface so
- * the routes work with both \`fetch\`-style handlers and tests that
- * don't bother constructing a full \`Request\`. */
+/** Minimal request shape — a subset of the Web `Request` interface so
+ * the routes work with both `fetch`-style handlers and tests that
+ * don't bother constructing a full `Request`. */
 export interface LearningRouteRequest {
   json(): Promise<unknown>;
 }
 
 /** Minimal handler signature. Returns either a body (auto-JSON) or
- * a \`{ status, body }\` envelope so handlers can express 4xx errors
+ * a `{ status, body }` envelope so handlers can express 4xx errors
  * without depending on a Response factory. */
 export type LearningHandlerResult =
   | { status?: number; body: unknown }
@@ -1138,10 +1127,10 @@ export type LearningHandlerResult =
 
 export type LearningHandler = (request: LearningRouteRequest) => Promise<LearningHandlerResult>;
 
-/** The shape \`registerLearningRoutes\` expects of the host router.
- * Two methods (\`get\` / \`post\`) keep this module independent of a
+/** The shape `registerLearningRoutes` expects of the host router.
+ * Two methods (`get` / `post`) keep this module independent of a
  * specific framework. The host adapter is responsible for translating
- * \`LearningHandlerResult\` into a real \`Response\`. */
+ * `LearningHandlerResult` into a real `Response`. */
 export interface LearningRouter {
   get(path: string, handler: LearningHandler): void;
   post(path: string, handler: LearningHandler): void;
@@ -1167,8 +1156,8 @@ export interface LearningSummary {
 
 /**
  * Wire the learning routes onto a router. The host is responsible for
- * adapting the returned \`LearningHandlerResult\` into a real
- * \`Response\`; see \`respondLearning\` for a convenience converter.
+ * adapting the returned `LearningHandlerResult` into a real
+ * `Response`; see `respondLearning` for a convenience converter.
  */
 export function registerLearningRoutes(router: LearningRouter, store: DoStorageLike): void {
   router.get("/learning/pending", async () => {
@@ -1210,12 +1199,12 @@ export function registerLearningRoutes(router: LearningRouter, store: DoStorageL
 }
 
 /**
- * Convenience adapter: invoke the matching handler from \`router\` and
- * return a \`Response\`. Useful when callers want to translate a
- * \`fetch\`-style URL into a learning route hit without instantiating a
+ * Convenience adapter: invoke the matching handler from `router` and
+ * return a `Response`. Useful when callers want to translate a
+ * `fetch`-style URL into a learning route hit without instantiating a
  * full router.
  *
- * The returned \`Response\` is \`null\` when no learning route matches;
+ * The returned `Response` is `null` when no learning route matches;
  * the host can then fall through to its other routes.
  */
 export async function respondLearning(
@@ -1226,7 +1215,7 @@ export async function respondLearning(
   if (!url.pathname.startsWith("/learning/")) return null;
 
   // We use a tiny in-line router so this helper has the same surface
-  // as \`registerLearningRoutes\` — the host can choose either path.
+  // as `registerLearningRoutes` — the host can choose either path.
   const handlers: { method: string; path: string; handler: LearningHandler }[] = [];
   const router: LearningRouter = {
     get(path, handler) {
@@ -1247,7 +1236,7 @@ export async function respondLearning(
   return resultToResponse(result);
 }
 
-/** Translate a \`LearningHandlerResult\` into a fetch \`Response\`. */
+/** Translate a `LearningHandlerResult` into a fetch `Response`. */
 export function resultToResponse(result: LearningHandlerResult): Response {
   const status = result.status ?? 200;
   if (result.body === undefined) {
@@ -1283,7 +1272,7 @@ function applyDecision(
   }
 
   // For "accept" and "edit" the suggestion becomes applied. The
-  // recorded \`decisionAction\` lets the summary distinguish "edited"
+  // recorded `decisionAction` lets the summary distinguish "edited"
   // from "accepted" without changing the published EvolveSuggestion
   // union (which is shared with the evolve loop).
   const base = decision.decision === "edit" && decision.editedFields
@@ -1297,7 +1286,7 @@ function mergeEditedFields(
   edits: Record<string, unknown>
 ): EvolveSuggestion {
   // Whitelist of fields the API allows the user to overwrite. Keeps
-  // structural fields (\`id\`, \`kind\`, \`evidenceTraceIds\`, \`status\`)
+  // structural fields (`id`, `kind`, `evidenceTraceIds`, `status`)
   // immutable through this endpoint.
   const allowed: Record<EvolveSuggestion["kind"], readonly string[]> = {
     skill: ["name", "summary", "systemPromptFragment", "toolBindings", "confidence"],
@@ -1322,14 +1311,14 @@ function parseDecisionRequest(
   const id = record.id;
   const decision = record.decision;
   if (typeof id !== "string" || !id) {
-    return { ok: false, error: "\`id\` must be a non-empty string." };
+    return { ok: false, error: "`id` must be a non-empty string." };
   }
   if (decision !== "accept" && decision !== "reject" && decision !== "edit") {
-    return { ok: false, error: "\`decision\` must be 'accept' | 'reject' | 'edit'." };
+    return { ok: false, error: "`decision` must be 'accept' | 'reject' | 'edit'." };
   }
   const editedFields = record.editedFields;
   if (editedFields !== undefined && (editedFields === null || typeof editedFields !== "object" || Array.isArray(editedFields))) {
-    return { ok: false, error: "\`editedFields\` must be an object when present." };
+    return { ok: false, error: "`editedFields` must be an object when present." };
   }
   const value: DecisionRequest = { id, decision };
   if (editedFields !== undefined) {
@@ -1343,7 +1332,7 @@ function parseDecisionRequest(
  * Framework-agnostic SSE document-stream endpoint.
  *
  * Each deployed agent that owns documents (or any model-generated
- * artifact) can expose a \`/documents/:id/stream\` route. The Persona
+ * artifact) can expose a `/documents/:id/stream` route. The Persona
  * document viewer subscribes via EventSource and re-renders through
  * Streamdown as chunks arrive.
  *
@@ -1351,17 +1340,17 @@ function parseDecisionRequest(
  *   - The producer is an async generator that yields string chunks.
  *     Yield resolution = SSE frame emit, so the server doesn't have
  *     to buffer the full document.
- *   - When the generator returns, the route emits an \`event: done\`
+ *   - When the generator returns, the route emits an `event: done`
  *     frame and closes the stream.
- *   - When the generator throws, the route emits an \`event: error\`
+ *   - When the generator throws, the route emits an `event: error`
  *     frame with the message and closes.
  *
  * The route handler is exposed two ways:
- *   - \`respondDocumentStream(request, producer)\` — returns a Response
+ *   - `respondDocumentStream(request, producer)` — returns a Response
  *     ready to send back. Use from any fetch-style handler.
- *   - \`createDocumentStreamRoute(getProducer)\` — returns a router
- *     function \`(request) => Promise<Response | null>\` that matches
- *     \`GET /documents/:id/stream\` and dispatches to the producer.
+ *   - `createDocumentStreamRoute(getProducer)` — returns a router
+ *     function `(request) => Promise<Response | null>` that matches
+ *     `GET /documents/:id/stream` and dispatches to the producer.
  */
 
 export type DocumentChunkProducer = AsyncGenerator<string, void, unknown>;
@@ -1377,14 +1366,14 @@ const encoder = new TextEncoder();
 
 function encodeFrame(data: string, options: { event?: string; id?: string } = {}): Uint8Array {
   const lines: string[] = [];
-  if (options.event) lines.push(\`event: \${options.event}\`);
-  if (options.id) lines.push(\`id: \${options.id}\`);
-  for (const line of data.split(/\\r?\\n/)) {
-    lines.push(\`data: \${line}\`);
+  if (options.event) lines.push(`event: ${options.event}`);
+  if (options.id) lines.push(`id: ${options.id}`);
+  for (const line of data.split(/\r?\n/)) {
+    lines.push(`data: ${line}`);
   }
   lines.push("");
   lines.push("");
-  return encoder.encode(lines.join("\\n"));
+  return encoder.encode(lines.join("\n"));
 }
 
 /**
@@ -1415,7 +1404,7 @@ export function respondDocumentStream(
       if (heartbeatMs > 0) {
         heartbeat = setInterval(() => {
           try {
-            controller.enqueue(encoder.encode(":keepalive\\n\\n"));
+            controller.enqueue(encoder.encode(":keepalive\n\n"));
           } catch {
             close();
           }
@@ -1431,12 +1420,12 @@ export function respondDocumentStream(
         for await (const chunk of producer) {
           if (abortSignal.aborted) break;
           counter += 1;
-          controller.enqueue(encodeFrame(chunk, { id: \`\${prefix}-\${counter}\` }));
+          controller.enqueue(encodeFrame(chunk, { id: `${prefix}-${counter}` }));
         }
-        controller.enqueue(encodeFrame("", { event: "done", id: \`\${prefix}-done\` }));
+        controller.enqueue(encodeFrame("", { event: "done", id: `${prefix}-done` }));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        controller.enqueue(encodeFrame(message, { event: "error", id: \`\${prefix}-error\` }));
+        controller.enqueue(encodeFrame(message, { event: "error", id: `${prefix}-error` }));
       } finally {
         close();
       }
@@ -1460,8 +1449,8 @@ export interface DocumentStreamRouteContext {
 }
 
 /**
- * Build a router that matches \`GET /documents/<id>/stream\` and
- * dispatches to the supplied producer factory. Returns \`null\` for
+ * Build a router that matches `GET /documents/<id>/stream` and
+ * dispatches to the supplied producer factory. Returns `null` for
  * non-matching requests so the caller can compose with other routes.
  */
 export function createDocumentStreamRoute(
@@ -1471,7 +1460,7 @@ export function createDocumentStreamRoute(
   return async (request) => {
     if (request.method !== "GET") return null;
     const url = new URL(request.url);
-    const match = /^\\/documents\\/([^/]+)\\/stream\\/?$/.exec(url.pathname);
+    const match = /^\/documents\/([^/]+)\/stream\/?$/.exec(url.pathname);
     if (!match) return null;
     const documentId = decodeURIComponent(match[1]!);
     const producer = await getProducer({ documentId, request });
@@ -1500,7 +1489,7 @@ export async function* chunksFromString(content: string, chunkSize = 64): Docume
  * PRs against any repo their GitHub token has access to. The platform
  * itself never sees the token.
  *
- * Strategy: rather than shelling out to \`git\` (the Sandbox-GA isolate
+ * Strategy: rather than shelling out to `git` (the Sandbox-GA isolate
  * doesn't ship it), we drive GitHub's low-level Git Data API — blob /
  * tree / commit / ref. That lets us assemble a single commit with N
  * file writes + M deletions atomically, without any local checkout.
@@ -1510,7 +1499,7 @@ export async function* chunksFromString(content: string, chunkSize = 64): Docume
  * a multi-file commit. Git Data API gives us one commit per call.
  *
  * The Sandbox-GA binding is wired in as an *advisory* pre-check hook —
- * future plans will run \`npm test\` / linters in the isolate before
+ * future plans will run `npm test` / linters in the isolate before
  * we publish a PR. Failures there are logged but never block the PR;
  * the orchestrator surfaces them to the user.
  */
@@ -1647,7 +1636,7 @@ export function createProposePr(
   config: ProposePrConfig
 ): (input: ProposePrInput) => Promise<ProposePrResult> {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const apiBase = (config.githubApiBase ?? DEFAULT_GITHUB_API).replace(/\\/+$/, "");
+  const apiBase = (config.githubApiBase ?? DEFAULT_GITHUB_API).replace(/\/+$/, "");
   const sandbox = config.sandbox;
   const idempotencyStore = config.idempotencyStore;
 
@@ -1658,7 +1647,7 @@ export function createProposePr(
   ): Promise<{ data: T; status: number }> {
     const method = options.method ?? "GET";
     const headers: Record<string, string> = {
-      Authorization: \`Bearer \${token}\`,
+      Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "openthink2-propose-pr"
@@ -1668,7 +1657,7 @@ export function createProposePr(
       headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(options.body);
     }
-    const response = await fetchImpl(\`\${apiBase}\${path}\`, init);
+    const response = await fetchImpl(`${apiBase}${path}`, init);
     const text = await response.text();
     const allowed = options.acceptStatuses;
     const ok =
@@ -1676,7 +1665,7 @@ export function createProposePr(
       (allowed !== undefined && allowed.includes(response.status));
     if (!ok) {
       throw new GitHubApiError(
-        \`GitHub \${method} \${path} failed with \${response.status}\`,
+        `GitHub ${method} ${path} failed with ${response.status}`,
         response.status,
         text
       );
@@ -1700,7 +1689,7 @@ export function createProposePr(
   ): Promise<GitRefResponse | undefined> {
     const { data, status } = await request<GitRefResponse>(
       token,
-      \`/repos/\${enc(owner)}/\${enc(repo)}/git/ref/heads/\${encBranch(branch)}\`,
+      `/repos/${enc(owner)}/${enc(repo)}/git/ref/heads/${encBranch(branch)}`,
       { acceptStatuses: [404] }
     );
     if (status === 404) return undefined;
@@ -1720,7 +1709,7 @@ export function createProposePr(
     void forkOwner;
     await request<unknown>(
       token,
-      \`/repos/\${enc(upstreamOwner)}/\${enc(repo)}/forks\`,
+      `/repos/${enc(upstreamOwner)}/${enc(repo)}/forks`,
       { method: "POST", acceptStatuses: [202] }
     );
   }
@@ -1737,7 +1726,7 @@ export function createProposePr(
     headBranch: string,
     titleHash: string
   ): string {
-    return \`\${target.owner}/\${target.repo}#\${headBranch}#\${titleHash}\`;
+    return `${target.owner}/${target.repo}#${headBranch}#${titleHash}`;
   }
 
   return async function proposePr(input: ProposePrInput): Promise<ProposePrResult> {
@@ -1765,7 +1754,7 @@ export function createProposePr(
           log.push({
             step: "idempotency-cache",
             status: "ok",
-            detail: \`cache hit: \${cached.prUrl}\`
+            detail: `cache hit: ${cached.prUrl}`
           });
           return finalize(true, input.headBranch, {
             prUrl: cached.prUrl,
@@ -1808,7 +1797,7 @@ export function createProposePr(
         log.push({
           step: "sandbox-pre-checks",
           status: "error",
-          detail: \`advisory failure: \${stringifyError(error)}\`
+          detail: `advisory failure: ${stringifyError(error)}`
         });
         // intentionally do not return — see comment above
       }
@@ -1836,7 +1825,7 @@ export function createProposePr(
         input.target.baseBranch
       );
       if (!baseRef) {
-        const detail = \`base branch '\${input.target.baseBranch}' not found on \${input.target.owner}/\${repo}\`;
+        const detail = `base branch '${input.target.baseBranch}' not found on ${input.target.owner}/${repo}`;
         log.push({ step: "resolve-base", status: "error", detail });
         return finalize(false, input.headBranch, { error: detail });
       }
@@ -1844,7 +1833,7 @@ export function createProposePr(
       log.push({
         step: "resolve-base",
         status: "ok",
-        detail: \`base \${input.target.baseBranch}@\${shortSha(baseSha)}\`
+        detail: `base ${input.target.baseBranch}@${shortSha(baseSha)}`
       });
     } catch (error) {
       const detail = stringifyError(error);
@@ -1856,13 +1845,13 @@ export function createProposePr(
     try {
       const { data: baseCommit } = await request<GitCommitResponse>(
         token,
-        \`/repos/\${enc(input.target.owner)}/\${enc(repo)}/git/commits/\${enc(baseSha)}\`
+        `/repos/${enc(input.target.owner)}/${enc(repo)}/git/commits/${enc(baseSha)}`
       );
       baseTreeSha = baseCommit.tree.sha;
       log.push({
         step: "resolve-base-tree",
         status: "ok",
-        detail: \`base tree \${shortSha(baseTreeSha)}\`
+        detail: `base tree ${shortSha(baseTreeSha)}`
       });
     } catch (error) {
       const detail = stringifyError(error);
@@ -1877,7 +1866,7 @@ export function createProposePr(
         log.push({
           step: "ensure-fork",
           status: "ok",
-          detail: \`fork \${input.target.fork.owner}/\${repo}\`
+          detail: `fork ${input.target.fork.owner}/${repo}`
         });
       } catch (error) {
         const detail = stringifyError(error);
@@ -1891,7 +1880,7 @@ export function createProposePr(
     try {
       let suffix = 0;
       while (suffix < MAX_BRANCH_SUFFIX_TRIES) {
-        const candidate = suffix === 0 ? input.headBranch : \`\${input.headBranch}-\${suffix}\`;
+        const candidate = suffix === 0 ? input.headBranch : `${input.headBranch}-${suffix}`;
         const existing = await tryGetRef(token, headOwner, repo, candidate);
         if (!existing) {
           headBranch = candidate;
@@ -1905,17 +1894,17 @@ export function createProposePr(
           break;
         }
         suffix += 1;
-        headBranch = \`\${input.headBranch}-\${suffix}\`;
+        headBranch = `${input.headBranch}-${suffix}`;
       }
       if (suffix >= MAX_BRANCH_SUFFIX_TRIES) {
-        const detail = \`could not find a free branch name within \${MAX_BRANCH_SUFFIX_TRIES} tries (last tried: \${headBranch})\`;
+        const detail = `could not find a free branch name within ${MAX_BRANCH_SUFFIX_TRIES} tries (last tried: ${headBranch})`;
         log.push({ step: "pick-head-branch", status: "error", detail });
         return finalize(false, headBranch, { error: detail });
       }
       log.push({
         step: "pick-head-branch",
         status: "ok",
-        detail: \`head \${headOwner}/\${repo}:\${headBranch}\`
+        detail: `head ${headOwner}/${repo}:${headBranch}`
       });
     } catch (error) {
       const detail = stringifyError(error);
@@ -1929,22 +1918,22 @@ export function createProposePr(
       if (!existing) {
         await request<GitRefResponse>(
           token,
-          \`/repos/\${enc(headOwner)}/\${enc(repo)}/git/refs\`,
+          `/repos/${enc(headOwner)}/${enc(repo)}/git/refs`,
           {
             method: "POST",
-            body: { ref: \`refs/heads/\${headBranch}\`, sha: baseSha }
+            body: { ref: `refs/heads/${headBranch}`, sha: baseSha }
           }
         );
         log.push({
           step: "create-branch",
           status: "ok",
-          detail: \`created \${headBranch} @ \${shortSha(baseSha)}\`
+          detail: `created ${headBranch} @ ${shortSha(baseSha)}`
         });
       } else {
         log.push({
           step: "create-branch",
           status: "skipped",
-          detail: \`\${headBranch} already exists @ \${shortSha(existing.object.sha)}\`
+          detail: `${headBranch} already exists @ ${shortSha(existing.object.sha)}`
         });
       }
     } catch (error) {
@@ -1960,7 +1949,7 @@ export function createProposePr(
       for (const [path, content] of fileEntries) {
         const { data: blob } = await request<GitBlobResponse>(
           token,
-          \`/repos/\${enc(headOwner)}/\${enc(repo)}/git/blobs\`,
+          `/repos/${enc(headOwner)}/${enc(repo)}/git/blobs`,
           {
             method: "POST",
             body: {
@@ -1976,7 +1965,7 @@ export function createProposePr(
         status: fileEntries.length > 0 ? "ok" : "skipped",
         detail:
           fileEntries.length > 0
-            ? \`created \${fileEntries.length} blob(s)\`
+            ? `created ${fileEntries.length} blob(s)`
             : "no files to write"
       });
     } catch (error) {
@@ -2017,7 +2006,7 @@ export function createProposePr(
       }
       const { data: tree } = await request<GitTreeResponse>(
         token,
-        \`/repos/\${enc(headOwner)}/\${enc(repo)}/git/trees\`,
+        `/repos/${enc(headOwner)}/${enc(repo)}/git/trees`,
         {
           method: "POST",
           body: {
@@ -2030,7 +2019,7 @@ export function createProposePr(
       log.push({
         step: "create-tree",
         status: "ok",
-        detail: \`tree \${shortSha(newTreeSha)} (\${treeEntries.length} entries)\`
+        detail: `tree ${shortSha(newTreeSha)} (${treeEntries.length} entries)`
       });
     } catch (error) {
       const detail = stringifyError(error);
@@ -2044,7 +2033,7 @@ export function createProposePr(
       const message = input.commitMessage ?? input.title;
       const { data: commit } = await request<GitNewCommitResponse>(
         token,
-        \`/repos/\${enc(headOwner)}/\${enc(repo)}/git/commits\`,
+        `/repos/${enc(headOwner)}/${enc(repo)}/git/commits`,
         {
           method: "POST",
           body: {
@@ -2062,7 +2051,7 @@ export function createProposePr(
       log.push({
         step: "create-commit",
         status: "ok",
-        detail: \`commit \${shortSha(commitSha)}\`
+        detail: `commit ${shortSha(commitSha)}`
       });
     } catch (error) {
       const detail = stringifyError(error);
@@ -2074,7 +2063,7 @@ export function createProposePr(
     try {
       await request<GitRefResponse>(
         token,
-        \`/repos/\${enc(headOwner)}/\${enc(repo)}/git/refs/heads/\${encBranch(headBranch)}\`,
+        `/repos/${enc(headOwner)}/${enc(repo)}/git/refs/heads/${encBranch(headBranch)}`,
         {
           method: "PATCH",
           body: { sha: commitSha, force: false }
@@ -2083,7 +2072,7 @@ export function createProposePr(
       log.push({
         step: "update-ref",
         status: "ok",
-        detail: \`\${headBranch} → \${shortSha(commitSha)}\`
+        detail: `${headBranch} → ${shortSha(commitSha)}`
       });
     } catch (error) {
       const detail = stringifyError(error);
@@ -2095,10 +2084,10 @@ export function createProposePr(
     let prUrl: string;
     let prNumber: number;
     try {
-      const head = input.target.fork ? \`\${input.target.fork.owner}:\${headBranch}\` : headBranch;
+      const head = input.target.fork ? `${input.target.fork.owner}:${headBranch}` : headBranch;
       const { data: pr } = await request<GitHubPullResponse>(
         token,
-        \`/repos/\${enc(input.target.owner)}/\${enc(repo)}/pulls\`,
+        `/repos/${enc(input.target.owner)}/${enc(repo)}/pulls`,
         {
           method: "POST",
           body: {
@@ -2114,7 +2103,7 @@ export function createProposePr(
       log.push({
         step: "open-pr",
         status: "ok",
-        detail: \`#\${prNumber} \${prUrl}\`
+        detail: `#${prNumber} ${prUrl}`
       });
     } catch (error) {
       const detail = stringifyError(error);
@@ -2129,7 +2118,7 @@ export function createProposePr(
         log.push({
           step: "idempotency-store",
           status: "ok",
-          detail: \`cached PR #\${prNumber}\`
+          detail: `cached PR #${prNumber}`
         });
       } catch (error) {
         log.push({
@@ -2153,7 +2142,7 @@ function enc(segment: string): string {
 
 /**
  * Encode a branch name for a URL path. Slashes inside the branch
- * (e.g. \`claude/foo-bar\`) must be preserved.
+ * (e.g. `claude/foo-bar`) must be preserved.
  */
 function encBranch(branch: string): string {
   return branch
@@ -2168,8 +2157,8 @@ function shortSha(sha: string): string {
 
 function stringifyError(error: unknown): string {
   if (error instanceof GitHubApiError) {
-    const tail = error.responseText ? \` body=\${truncate(error.responseText, 200)}\` : "";
-    return \`\${error.message}\${tail}\`;
+    const tail = error.responseText ? ` body=${truncate(error.responseText, 200)}` : "";
+    return `${error.message}${tail}`;
   }
   if (error instanceof Error) return error.message;
   return String(error);
@@ -2177,7 +2166,7 @@ function stringifyError(error: unknown): string {
 
 function truncate(value: string, max: number): string {
   if (value.length <= max) return value;
-  return \`\${value.slice(0, max)}…\`;
+  return `${value.slice(0, max)}…`;
 }
 
 function bufferToHex(buffer: ArrayBuffer): string {
@@ -2191,7 +2180,7 @@ function bufferToHex(buffer: ArrayBuffer): string {
 
 /**
  * Base64-encode a UTF-8 string. GitHub's blob API expects the file
- * payload to be base64; we always send \`encoding: "base64"\` so binary
+ * payload to be base64; we always send `encoding: "base64"` so binary
  * content survives the round-trip.
  */
 function base64Encode(text: string): string {
@@ -2458,7 +2447,7 @@ export interface OrchestratorRpcWiringInput<TEnv> {
 /**
  * Iterate the descriptors and connect each as an RPC MCP server on the
  * orchestrator. Silently skips any descriptor whose bindingName is not
- * present on \`env\` — keeps deploys with partial subagent inventories
+ * present on `env` — keeps deploys with partial subagent inventories
  * working.
  */
 export async function wireOrchestratorMcpRpc<TEnv extends Record<string, unknown>>(
@@ -2489,10 +2478,10 @@ export function renderWranglerBindingsForChildren(children: AgentDescriptor[]): 
   const blocks: string[] = [];
   for (const child of children) {
     blocks.push(
-      \`[[durable_objects.bindings]]\\nname = "\${child.bindingName}"\\nclass_name = "\${camelClass(child.bindingName)}"\`
+      `[[durable_objects.bindings]]\nname = "${child.bindingName}"\nclass_name = "${camelClass(child.bindingName)}"`
     );
   }
-  return blocks.join("\\n\\n");
+  return blocks.join("\n\n");
 }
 
 function camelClass(bindingName: string): string {
@@ -2730,11 +2719,11 @@ export function buildSystemPromptFromSkills(skills: Skill[]): string {
   if (enabled.length === 0) return "";
   const lines = ["# Active skills"];
   for (const skill of enabled) {
-    lines.push(\`## \${skill.name}\`);
+    lines.push(`## ${skill.name}`);
     lines.push(skill.systemPromptFragment!);
     lines.push("");
   }
-  return lines.join("\\n");
+  return lines.join("\n");
 }
 
 export function flattenPacks(packs: SkillPack[]): Skill[] {
@@ -2808,7 +2797,7 @@ export function createDoSkillStore(storage: DoStorageLike): SkillStore {
  * Workflow IR — the runtime-neutral intermediate representation that
  * the JSX / function DSL compiles into.
  *
- * Nodes are tagged unions so a runtime can switch on \`kind\` and an
+ * Nodes are tagged unions so a runtime can switch on `kind` and an
  * interpreter can implement each operator without coupling to the
  * authoring syntax (JSX, fluent builders, or hand-written IR).
  */
@@ -2825,13 +2814,13 @@ export interface IRTask<TIn = unknown, TOut = unknown> {
   kind: "task";
   name: string;
   /** Optional Effect Schema for the task's input/output. The runner
-   *  validates the resolved input *before* calling \`handler\` and the
+   *  validates the resolved input *before* calling `handler` and the
    *  produced output *before* persisting it. */
   input?: Schema.Schema<TIn, unknown>;
   output?: Schema.Schema<TOut, unknown>;
   /** Pure handler; the runner is responsible for durability. */
   handler: (input: TIn, ctx: TaskContext) => Promise<TOut>;
-  /** Per-task retry override (\`{ limit, backoff?: "exponential" | "linear" }\`). */
+  /** Per-task retry override (`{ limit, backoff?: "exponential" | "linear" }`). */
   retry?: { limit: number; backoff?: "exponential" | "linear" };
 }
 
@@ -2861,7 +2850,7 @@ export interface IRBranch {
 export interface IRRalph {
   kind: "ralph";
   name?: string;
-  /** Loop body — re-runs while \`condition\` returns true. */
+  /** Loop body — re-runs while `condition` returns true. */
   body: WorkflowNode;
   condition: (scope: WorkflowScope, iteration: number) => boolean;
   maxIterations: number;
@@ -2929,7 +2918,7 @@ export interface WorkflowScope {
  *   );
  *
  * JSX-compatible API (for tsx files using a @jsxImportSource pragma
- * to bind to our \`h\` factory):
+ * to bind to our `h` factory):
  *
  *   <Workflow name="greet" version="1.0.0">
  *     <Sequence>
@@ -2960,8 +2949,8 @@ export function task<TIn = unknown, TOut = unknown>(
 ): IRTask<unknown, unknown> {
   // Erase the precise input/output generics at the boundary so the
   // resulting node fits inside the WorkflowNode union without
-  // exactOptionalPropertyTypes variance complaints. \`as never\` then
-  // \`as IRTask<unknown, unknown>\` is intentional — TypeScript is
+  // exactOptionalPropertyTypes variance complaints. `as never` then
+  // `as IRTask<unknown, unknown>` is intentional — TypeScript is
   // strict here and Schema is invariant in its first parameter, so
   // we accept the precise schema at the call site and store the
   // erased form on the node.
@@ -3060,7 +3049,7 @@ export function workflow(
 
 /**
  * JSX factory that produces our IR. Bind via per-file pragmas
- * (\`@jsxRuntime classic\` + \`@jsx h\`) or set \`jsxFactory: "h"\` in
+ * (`@jsxRuntime classic` + `@jsx h`) or set `jsxFactory: "h"` in
  * tsconfig.json (we keep React for the rest of the UI — workflow
  * files opt in per-file).
  *
@@ -3086,7 +3075,7 @@ export function h(
   ...children: unknown[]
 ): WorkflowNode | IRWorkflow {
   if (typeof type !== "function") {
-    throw new Error(\`Workflow JSX: unknown element <\${String(type)}>\`);
+    throw new Error(`Workflow JSX: unknown element <${String(type)}>`);
   }
   const flat = flattenChildren(children);
   return type({ ...(props ?? {}), children: flat } as never, ...flat);
@@ -3164,7 +3153,7 @@ export function Workflow(
 ): IRWorkflow {
   const children = toArray(props.children);
   if (children.length !== 1) {
-    throw new Error(\`<Workflow name="\${props.name}"> requires exactly one child node, got \${children.length}.\`);
+    throw new Error(`<Workflow name="${props.name}"> requires exactly one child node, got ${children.length}.`);
   }
   const opts: Parameters<typeof workflow>[1] = {};
   if (props.version) opts.version = props.version;
@@ -3192,8 +3181,8 @@ function toArray<T>(v: T | T[] | undefined): T[] {
  *   - ralph     → Effect.iterate over the body up to maxIterations.
  *
  * The interpreter is durability-agnostic: the runner (see runner.ts)
- * injects a TaskContext whose \`persist\` / \`recall\` are wired to
- * Cloudflare Workflows' \`step.do()\` checkpoints so a crash mid-run
+ * injects a TaskContext whose `persist` / `recall` are wired to
+ * Cloudflare Workflows' `step.do()` checkpoints so a crash mid-run
  * resumes from the last completed task.
  */
 
@@ -3212,7 +3201,7 @@ export class WorkflowSchemaError extends Data.TaggedError("WorkflowSchemaError")
 export interface InterpreterDeps {
   buildTaskContext: (task: IRTask, scope: WorkflowScope) => TaskContext;
   /** Optional callback fired around every task — useful for the runner
-   *  to insert CF Workflows \`step.do\` boundaries. */
+   *  to insert CF Workflows `step.do` boundaries. */
   withStep?: <A, E>(
     task: IRTask,
     body: Effect.Effect<A, E>
@@ -3394,8 +3383,8 @@ function decode<A>(
  *
  *  - runWorkflow(workflow, input)        — pure Effect runner, in-memory.
  *                                          Use for tests + same-isolate work.
- *  - runWorkflowOnCloudflare(...)        — adapts each \`<Task>\` to a
- *                                          Cloudflare Workflow \`step.do()\`
+ *  - runWorkflowOnCloudflare(...)        — adapts each `<Task>` to a
+ *                                          Cloudflare Workflow `step.do()`
  *                                          checkpoint so a crash mid-run
  *                                          resumes from the last completed
  *                                          task. Reference:
@@ -3444,7 +3433,7 @@ export async function runWorkflow(
 // ----- Cloudflare Workflows runner -----------------------------------------
 
 /**
- * Minimal shape of the Cloudflare Workflows \`WorkflowStep\` we depend
+ * Minimal shape of the Cloudflare Workflows `WorkflowStep` we depend
  * on. Kept structural so the runner can be tested without the real
  * binding and so SDK minor-version drift doesn't break the surface.
  */
@@ -3460,7 +3449,7 @@ export interface CloudflareWorkflowStep {
 
 interface CloudflareDurableStore {
   /** Workflow-level persistence — survives restarts. CF Workflows
-   *  itself does this for \`step.do\` returns; we hand the same store
+   *  itself does this for `step.do` returns; we hand the same store
    *  to tasks for ad-hoc key/value needs. */
   put(key: string, value: Json): Promise<void>;
   get(key: string): Promise<Json | undefined>;
@@ -3490,8 +3479,8 @@ export async function runWorkflowOnCloudflare(
   const eff = interpret(input.workflow, input.input, {
     buildTaskContext: (task, scope): TaskContext => ({
       scope,
-      persist: (key, value) => store.put(\`\${task.name}:\${key}\`, value),
-      recall: (key) => store.get(\`\${task.name}:\${key}\`),
+      persist: (key, value) => store.put(`${task.name}:${key}`, value),
+      recall: (key) => store.get(`${task.name}:${key}`),
       log: input.logger ?? (() => {})
     }),
     withStep: (task, body) => wrapStep(task, body, input.step)
@@ -3521,4 +3510,3 @@ function wrapStep<A, E>(
     catch: (cause) => cause as E
   });
 }
-`;

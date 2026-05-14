@@ -30,7 +30,8 @@ export type PersonaArtifactKind =
   | "table"
   | "image"
   | "code"
-  | "chart";
+  | "chart"
+  | "diff";
 
 export interface PersonaArtifact {
   id: string;
@@ -263,7 +264,9 @@ function ArtifactTile({ artifact, active }: { artifact: PersonaArtifact; active:
                       ? "Image preview with download and variations."
                       : artifact.kind === "chart"
                         ? "Interactive chart rendered in sandboxed iframe."
-                        : "Webpage / app preview with mobile / desktop viewport toggle."}
+                        : artifact.kind === "diff"
+                          ? "Diff viewer — inline or side-by-side comparison of two text revisions."
+                          : "Webpage / app preview with mobile / desktop viewport toggle."}
         </p>
       </div>
     </article>
@@ -288,5 +291,7 @@ function kindIcon(kind: PersonaArtifactKind): string {
       return "💻";
     case "chart":
       return "📈";
+    case "diff":
+      return "🔀";
   }
 }

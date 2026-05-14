@@ -20,6 +20,9 @@ export type { ChartViewProps } from "./chart-view";
 export { CodeView } from "./code-view";
 export type { CodeViewProps } from "./code-view";
 
+export { DiffView, computeLineDiff, buildUnifiedPatch } from "./diff-view";
+export type { DiffLine, DiffViewProps } from "./diff-view";
+
 export { DocumentView } from "./document-view";
 export type { DocumentViewProps } from "./document-view";
 
@@ -41,6 +44,7 @@ export type {
   ChartData,
   ChartPoint,
   CodeData,
+  DiffData,
   DocumentData,
   DocumentVersion,
   ImageData,

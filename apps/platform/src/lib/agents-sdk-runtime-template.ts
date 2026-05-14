@@ -147,7 +147,8 @@ export function renderAgentsSdkWranglerJsonc(
         { name: "PersonalChatAgent", class_name: "PersonalChatAgent" },
         { name: "ORCHESTRATOR", class_name: "OrchestratorAgent" },
         { name: "AGENT_CODER", class_name: "AgentCoder" },
-        { name: "AGENT_RESEARCHER", class_name: "AgentResearcher" }
+        { name: "AGENT_RESEARCHER", class_name: "AgentResearcher" },
+        { name: "AGENT_BROWSER", class_name: "AgentBrowser" }
       ]
     },
     migrations: [
@@ -157,10 +158,19 @@ export function renderAgentsSdkWranglerJsonc(
           "PersonalChatAgent",
           "OrchestratorAgent",
           "AgentCoder",
-          "AgentResearcher"
+          "AgentResearcher",
+          "AgentBrowser"
         ]
       }
     ],
+    kv_namespaces: [
+      {
+        binding: "WORKSPACE_FILES",
+        id: "replace-me"
+      }
+    ],
+    "//browser":
+      "To enable Cloudflare Browser Rendering for AgentBrowser, add: \"browser\": { \"binding\": \"BROWSER\" }. Requires Browser Rendering on the account.",
     r2_buckets: [
       {
         binding: "AGENT_STORAGE",
@@ -3574,6 +3584,7 @@ function renderServerTs(input: {
 import type { OnChatMessageOptions } from "@cloudflare/ai-chat";
 import { Agent, routeAgentRequest, type AgentContext } from "agents";
 import { McpAgent } from "agents/mcp";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   convertToModelMessages,
   createUIMessageStream,
@@ -3596,6 +3607,7 @@ import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import {
   buildOrchestratorSystemPrompt,
+  createProposePr,
   gateToolCall,
   handleSlashCommand,
   initOrchestrator,
@@ -3620,10 +3632,36 @@ interface D1DatabaseLike {
   prepare(sql: string): D1PreparedStatementLike;
 }
 
+interface KvNamespaceLike {
+  get(key: string, options?: { type?: "text" | "json" | "arrayBuffer" | "stream" }): Promise<string | null>;
+  put(key: string, value: string): Promise<void>;
+  delete(key: string): Promise<void>;
+  list(options?: { prefix?: string; limit?: number; cursor?: string }): Promise<{
+    keys: Array<{ name: string }>;
+    list_complete: boolean;
+    cursor?: string;
+  }>;
+}
+
+interface SandboxBindingLike {
+  run(input: {
+    code: string;
+    bindings: Record<string, unknown>;
+    timeoutMs?: number;
+  }): Promise<{ stdout: string; exitCode: number }>;
+}
+
+interface BrowserBindingLike {
+  fetch(request: Request | string, init?: RequestInit): Promise<Response>;
+}
+
 type RuntimeEnv = Record<string, unknown> & {
   AI: unknown;
   ASSETS?: AssetBinding;
   DB?: D1DatabaseLike;
+  WORKSPACE_FILES?: KvNamespaceLike;
+  SANDBOX?: SandboxBindingLike;
+  BROWSER?: BrowserBindingLike;
   OPEN_THINK_AGENT_NAME?: string;
   OPEN_THINK_CF_ACCOUNT_ID?: string;
   OPEN_THINK_CF_API_TOKEN?: string;
@@ -3638,6 +3676,12 @@ type RuntimeEnv = Record<string, unknown> & {
   OPEN_THINK_EXECUTOR_MCP_AUTO?: string;
   OPEN_THINK_SANDBOX_STATUS?: string;
   OPEN_THINK_CONTAINER_STATUS?: string;
+  OPEN_THINK_GITHUB_TOKEN?: string;
+  OPEN_THINK_PR_TARGET_OWNER?: string;
+  OPEN_THINK_PR_TARGET_REPO?: string;
+  OPEN_THINK_PR_BASE_BRANCH?: string;
+  OPEN_THINK_PR_AUTHOR_NAME?: string;
+  OPEN_THINK_PR_AUTHOR_EMAIL?: string;
   Sandbox?: unknown;
 };
 
@@ -4251,6 +4295,17 @@ const defaultChildDescriptors: AgentDescriptor[] = [
     enabledSkillIds: [],
     pinned: true,
     createdAt: new Date(0).toISOString()
+  },
+  {
+    id: "child-browser",
+    workspaceId: "default",
+    role: "browser",
+    name: "browser",
+    description: "Navigates the web, fetches pages, takes screenshots, and extracts text.",
+    bindingName: "AGENT_BROWSER",
+    enabledSkillIds: [],
+    pinned: true,
+    createdAt: new Date(0).toISOString()
   }
 ];
 
@@ -4377,27 +4432,446 @@ export class OrchestratorAgent extends Agent<OrchestratorEnv> {
 }
 
 /**
- * Stub child agent: scoped coder. The orchestrator wires this DO as an
- * RPC MCP server via wireOrchestratorMcpRpc + addMcpServer. The base
- * McpAgent class provides the RPC transport plumbing; deployments are
- * expected to subclass and override to bind real tools.
+ * Helper: produce a tool result with a single text part. Keeps tool
+ * handlers schema-conformant whether they succeed or degrade.
+ */
+function mcpTextResult(text: string, isError = false) {
+  return {
+    content: [{ type: "text" as const, text }],
+    ...(isError ? { isError: true } : {})
+  };
+}
+
+const WORKSPACE_KEY_PREFIX = "workspace/";
+
+function workspaceKey(path: string): string {
+  const trimmed = path.replace(/^\\/+/, "");
+  return WORKSPACE_KEY_PREFIX + trimmed;
+}
+
+/**
+ * Child agent: scoped coder. Registers file-system, sandbox, and
+ * pull-request tools that the orchestrator can call over RPC MCP.
+ *
+ * Every tool degrades gracefully when its required binding is missing:
+ * the handler returns a clear error message instead of throwing.
  */
 export class AgentCoder extends McpAgent<RuntimeEnv> {
-  server = { name: "agent-coder", version: "0.1.0" } as never;
+  server = new McpServer({ name: "agent-coder", version: "0.1.0" });
+
   async init(): Promise<void> {
-    // Subclasses register tools here. The stub keeps the binding alive so
-    // the orchestrator's RPC wiring succeeds even with no concrete tools.
+    const server = this.server;
+
+    server.tool(
+      "read_file",
+      "Read a file from the per-agent workspace KV namespace.",
+      { path: z.string() },
+      async (args) => {
+        const kv = this.env.WORKSPACE_FILES;
+        if (!kv) {
+          return mcpTextResult(
+            "WORKSPACE_FILES KV binding is not configured for this agent.",
+            true
+          );
+        }
+        try {
+          const value = await kv.get(workspaceKey(args.path));
+          if (value === null) {
+            return mcpTextResult("File not found: " + args.path, true);
+          }
+          return mcpTextResult(value);
+        } catch (error) {
+          return mcpTextResult(
+            "read_file failed: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
+
+    server.tool(
+      "write_file",
+      "Write (or overwrite) a file in the per-agent workspace KV namespace.",
+      { path: z.string(), content: z.string() },
+      async (args) => {
+        const kv = this.env.WORKSPACE_FILES;
+        if (!kv) {
+          return mcpTextResult(
+            "WORKSPACE_FILES KV binding is not configured for this agent.",
+            true
+          );
+        }
+        try {
+          await kv.put(workspaceKey(args.path), args.content);
+          return mcpTextResult("wrote " + args.content.length + " chars to " + args.path);
+        } catch (error) {
+          return mcpTextResult(
+            "write_file failed: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
+
+    server.tool(
+      "list_files",
+      "List files in the per-agent workspace KV namespace, optionally filtered by prefix.",
+      { prefix: z.string().optional() },
+      async (args) => {
+        const kv = this.env.WORKSPACE_FILES;
+        if (!kv) {
+          return mcpTextResult(
+            "WORKSPACE_FILES KV binding is not configured for this agent.",
+            true
+          );
+        }
+        try {
+          const prefix = workspaceKey(args.prefix ?? "");
+          const result = await kv.list({ prefix, limit: 1000 });
+          const paths = result.keys
+            .map((key) => key.name.slice(WORKSPACE_KEY_PREFIX.length))
+            .filter((name) => name.length > 0);
+          if (paths.length === 0) {
+            return mcpTextResult("(no files)");
+          }
+          return mcpTextResult(paths.join("\\n"));
+        } catch (error) {
+          return mcpTextResult(
+            "list_files failed: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
+
+    server.tool(
+      "propose_pr",
+      "Open a GitHub pull request with the supplied file contents against the configured target repository.",
+      {
+        title: z.string(),
+        body: z.string(),
+        branch: z.string(),
+        files: z.record(z.string())
+      },
+      async (args) => {
+        const token = this.env.OPEN_THINK_GITHUB_TOKEN;
+        const owner = this.env.OPEN_THINK_PR_TARGET_OWNER;
+        const repo = this.env.OPEN_THINK_PR_TARGET_REPO;
+        const baseBranch = this.env.OPEN_THINK_PR_BASE_BRANCH ?? "main";
+        if (!token || !owner || !repo) {
+          return mcpTextResult(
+            "propose_pr requires OPEN_THINK_GITHUB_TOKEN, OPEN_THINK_PR_TARGET_OWNER, and OPEN_THINK_PR_TARGET_REPO to be set.",
+            true
+          );
+        }
+        try {
+          const proposePr = createProposePr({
+            ...(this.env.SANDBOX ? { sandbox: this.env.SANDBOX } : {})
+          });
+          const result = await proposePr({
+            target: { owner, repo, baseBranch },
+            headBranch: args.branch,
+            title: args.title,
+            body: args.body,
+            files: args.files,
+            githubToken: token,
+            author: {
+              name: this.env.OPEN_THINK_PR_AUTHOR_NAME ?? "OpenThink Agent",
+              email: this.env.OPEN_THINK_PR_AUTHOR_EMAIL ?? "agent@openthink.local"
+            }
+          });
+          if (!result.ok) {
+            return mcpTextResult(
+              "propose_pr failed on branch " + result.headBranch + ": " + (result.error ?? "unknown error"),
+              true
+            );
+          }
+          const summary = "PR #" + result.prNumber + " opened at " + result.prUrl + " (branch " + result.headBranch + ").";
+          return mcpTextResult(summary);
+        } catch (error) {
+          return mcpTextResult(
+            "propose_pr threw: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
+
+    server.tool(
+      "run_in_sandbox",
+      "Execute code in the Sandbox-GA isolate (when bound) and return stdout + exitCode.",
+      { code: z.string(), timeoutMs: z.number().optional() },
+      async (args) => {
+        const sandbox = this.env.SANDBOX;
+        if (!sandbox) {
+          return mcpTextResult(
+            "SANDBOX binding is not configured for this agent.",
+            true
+          );
+        }
+        try {
+          const result = await sandbox.run({
+            code: args.code,
+            bindings: {},
+            ...(typeof args.timeoutMs === "number" ? { timeoutMs: args.timeoutMs } : {})
+          });
+          return mcpTextResult(
+            "exitCode=" + result.exitCode + "\\nstdout:\\n" + result.stdout
+          );
+        } catch (error) {
+          return mcpTextResult(
+            "run_in_sandbox failed: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
   }
 }
 
 /**
- * Stub child agent: scoped researcher. See AgentCoder above for the
- * extension contract.
+ * Child agent: scoped researcher. Registers tools that gather and
+ * distill external information via Workers AI / fetch.
  */
 export class AgentResearcher extends McpAgent<RuntimeEnv> {
-  server = { name: "agent-researcher", version: "0.1.0" } as never;
+  server = new McpServer({ name: "agent-researcher", version: "0.1.0" });
+
   async init(): Promise<void> {
-    // Subclasses register tools here.
+    const server = this.server;
+
+    server.tool(
+      "web_search",
+      "Search the web for the supplied query. Falls back to a Workers-AI prompt when no dedicated search provider is bound.",
+      {
+        query: z.string(),
+        limit: z.number().int().min(1).max(20).default(5)
+      },
+      async (args) => {
+        const ai = this.env.AI as
+          | { run(model: string, input: unknown): Promise<unknown> }
+          | undefined;
+        if (!ai) {
+          return mcpTextResult(
+            "Web search requires AI_GATEWAY or BROWSER binding.",
+            true
+          );
+        }
+        try {
+          const systemPrompt =
+            "You are a web search assistant. Return up to " +
+            args.limit +
+            " plain-text results for the user's query, each on its own line in the form: '<title> — <url> — <one-sentence summary>'. Do not hallucinate URLs; if you cannot answer with confidence, say so.";
+          const response = (await ai.run(
+            "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+            {
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: args.query }
+              ]
+            }
+          )) as { response?: string } | string;
+          const text =
+            typeof response === "string"
+              ? response
+              : typeof response?.response === "string"
+                ? response.response
+                : JSON.stringify(response);
+          return mcpTextResult(text);
+        } catch (error) {
+          return mcpTextResult(
+            "web_search failed: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
+
+    server.tool(
+      "fetch_url",
+      "Fetch an http(s) URL and return the response body (trimmed to 32 KB) with its content-type.",
+      { url: z.string().url() },
+      async (args) => {
+        let parsed: URL;
+        try {
+          parsed = new URL(args.url);
+        } catch {
+          return mcpTextResult("fetch_url: invalid URL.", true);
+        }
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          return mcpTextResult(
+            "fetch_url: only http(s) URLs are supported (got " + parsed.protocol + ").",
+            true
+          );
+        }
+        try {
+          const response = await fetch(parsed.toString(), {
+            headers: { "User-Agent": "openthink2-agent-researcher" }
+          });
+          const contentType = response.headers.get("content-type") ?? "(unknown)";
+          const body = await response.text();
+          const limit = 32 * 1024;
+          const trimmed = body.length > limit ? body.slice(0, limit) + "…(truncated)" : body;
+          return mcpTextResult(
+            "status=" + response.status + " content-type=" + contentType + "\\n\\n" + trimmed
+          );
+        } catch (error) {
+          return mcpTextResult(
+            "fetch_url failed: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
+
+    server.tool(
+      "summarize",
+      "Summarize the supplied text using Workers AI. Caps the response at the requested max word count.",
+      {
+        text: z.string(),
+        maxWords: z.number().int().min(20).max(2000).default(200)
+      },
+      async (args) => {
+        const ai = this.env.AI as
+          | { run(model: string, input: unknown): Promise<unknown> }
+          | undefined;
+        if (!ai) {
+          return mcpTextResult("summarize requires the AI binding.", true);
+        }
+        try {
+          const systemPrompt =
+            "Summarize the user's text in at most " +
+            args.maxWords +
+            " words. Keep technical names, numbers, and dates verbatim. Plain prose; no bullet list unless the source clearly is one.";
+          const response = (await ai.run(
+            "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+            {
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: args.text }
+              ]
+            }
+          )) as { response?: string } | string;
+          const text =
+            typeof response === "string"
+              ? response
+              : typeof response?.response === "string"
+                ? response.response
+                : JSON.stringify(response);
+          return mcpTextResult(text);
+        } catch (error) {
+          return mcpTextResult(
+            "summarize failed: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
+  }
+}
+
+/**
+ * Child agent: scoped browser. Wraps Cloudflare's Browser Rendering
+ * binding when configured; otherwise tools degrade with a clear error.
+ */
+export class AgentBrowser extends McpAgent<RuntimeEnv> {
+  server = new McpServer({ name: "agent-browser", version: "0.1.0" });
+
+  async init(): Promise<void> {
+    const server = this.server;
+
+    server.tool(
+      "navigate",
+      "Fetch the supplied URL via the Browser Rendering binding and return the rendered HTML.",
+      { url: z.string().url() },
+      async (args) => {
+        const browser = this.env.BROWSER;
+        if (!browser) {
+          return mcpTextResult(
+            "navigate requires the BROWSER binding (Cloudflare Browser Rendering).",
+            true
+          );
+        }
+        try {
+          const response = await browser.fetch(args.url);
+          const html = await response.text();
+          const limit = 64 * 1024;
+          const trimmed = html.length > limit ? html.slice(0, limit) + "…(truncated)" : html;
+          return mcpTextResult("status=" + response.status + "\\n\\n" + trimmed);
+        } catch (error) {
+          return mcpTextResult(
+            "navigate failed: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
+
+    server.tool(
+      "screenshot",
+      "Capture a screenshot of the supplied URL via the Browser Rendering /screenshot endpoint and return it as base64.",
+      { url: z.string().url() },
+      async (args) => {
+        const browser = this.env.BROWSER;
+        if (!browser) {
+          return mcpTextResult(
+            "screenshot requires the BROWSER binding (Cloudflare Browser Rendering).",
+            true
+          );
+        }
+        try {
+          const endpoint = "https://browser-rendering.local/screenshot?url=" + encodeURIComponent(args.url);
+          const response = await browser.fetch(endpoint);
+          if (!response.ok) {
+            return mcpTextResult(
+              "screenshot failed with status " + response.status,
+              true
+            );
+          }
+          const buffer = await response.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          let binary = "";
+          for (const byte of bytes) {
+            binary += String.fromCharCode(byte);
+          }
+          const base64 = btoa(binary);
+          return mcpTextResult(
+            "image/png base64 length=" + base64.length + "\\n" + base64
+          );
+        } catch (error) {
+          return mcpTextResult(
+            "screenshot failed: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
+
+    server.tool(
+      "extract_text",
+      "Strip HTML tags from the supplied markup and return the visible text.",
+      { html: z.string() },
+      async (args) => {
+        try {
+          const withoutScripts = args.html.replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, " ");
+          const withoutStyles = withoutScripts.replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, " ");
+          const stripped = withoutStyles.replace(/<[^>]+>/g, " ");
+          const decoded = stripped
+            .replace(/&nbsp;/g, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'");
+          const collapsed = decoded.replace(/\\s+/g, " ").trim();
+          return mcpTextResult(collapsed);
+        } catch (error) {
+          return mcpTextResult(
+            "extract_text failed: " + (error instanceof Error ? error.message : String(error)),
+            true
+          );
+        }
+      }
+    );
   }
 }
 
