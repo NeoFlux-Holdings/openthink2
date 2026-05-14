@@ -75,3 +75,25 @@ own follow-up tickets. The Streamdown markdown renderer, the existing
 chat thread component, and the sub-agent management surface from the
 current `client.tsx` all plug in cleanly. See the embedded TODO
 comments in `persona-shell.tsx` for the per-section hand-off points.
+
+## Modules that fill out the shell
+
+- `persona-views/` — one component per artifact kind
+  (`document-view`, `code-view`, `browser-view`, `webpage-view`,
+  `slides-view`, `table-view`, `image-view`, `chart-view`) plus
+  `artifact-router.tsx` which switches on `PersonaArtifactKind`. Each
+  view is dependency-light and renders inline in the canvas. The table
+  and chart views expose pure helpers (`buildCsv`, `inferColumns`,
+  `buildPolylinePoints`) for testability.
+- `persona-pages/` — the supporting pages reachable from the sidebar:
+  `library-page` (artifact grid with filters), `skills-page`
+  (built-in / active / pending tabs over `builtinSkillPacks`),
+  `settings-page` (model / extended thinking / approval / spend cap /
+  code-mode / training-mode), and `search-palette` (cmd+K modal with
+  Threads / Artifacts / Memories tabs and keyboard nav).
+- `orchestrator-runtime.ts` — re-export barrel imported by the
+  deployed agent's `server.ts`. The platform side mirrors this as an
+  inlined source string at
+  `apps/platform/src/lib/orchestrator-runtime-source.ts`, which the
+  runtime template emits into each user-agent bundle so the deployed
+  Worker stays standalone (no workspace dep at runtime).

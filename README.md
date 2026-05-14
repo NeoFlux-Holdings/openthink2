@@ -211,7 +211,11 @@ alongside Sandbox.
   are available and opt-in. Custom user skills coexist with built-ins.
 - `starters/personal-agent/src/orchestrator/` — workspace + orchestrator
   descriptors, the working-doc, recent threads, project goals, child-agent
-  tracking, and the RPC MCP wiring helper.
+  tracking, the RPC MCP wiring helper, and the `OrchestratorAgent` runtime
+  glue (`initOrchestrator`, `buildOrchestratorSystemPrompt`, `gateToolCall`,
+  `handleSlashCommand`, `recordTraceAndMaybeEvolve`).
+- `starters/personal-agent/src/goal.ts` — `/goal` slash-command parser +
+  executor (`set` / `list` / `complete` / `block` / `evolve`).
 - `starters/personal-agent/src/evolve/` — `RunTrace` collection plus an
   evolve loop modeled on the OpenAI self-evolving-agents cookbook. Emits
   skill / rubric / prompt suggestions; in `auto-evolve` training mode,
@@ -220,6 +224,30 @@ alongside Sandbox.
   manual modes, spend caps, and an alwaysAllow / neverAllow learning
   surface that lets the agent remember "approve this kind of call from now
   on" decisions.
+- `starters/personal-agent/src/learning-routes.ts` —
+  framework-agnostic `GET /learning/pending`, `POST /learning/decisions`,
+  `GET /learning/summary` endpoints + a `respondLearning(request, store)`
+  fetch adapter for runtimes without a router. The platform's Learning
+  page fetches these live (or shows a "Demo data" badge when no agent
+  URL is configured).
+
+## Persona shell — the deployed agent UI
+
+The deployed personal agent ships with a three-column Persona shell
+(opt-in via `?shell=persona` in the agent URL):
+
+- `starters/personal-agent/src/persona-shell.tsx` — sidebar / thread
+  feed / artifact canvas grid with single / grid / stack windowing.
+- `starters/personal-agent/src/persona-views/*` — one viewer per
+  artifact kind: document, code, browser session (live screenshot
+  stream), webpage (mobile/desktop iframe toggle), slides, table
+  (sortable + CSV export), image, chart (SVG polyline). Routed by
+  `artifact-router.tsx`.
+- `starters/personal-agent/src/persona-pages/*` — Library, Skills,
+  Settings, and Search palette pages reachable from the sidebar.
+
+The legacy single-pane chat stays the default until the per-artifact
+viewers are wired into the existing chat surface.
 
 ## Sync model + update + contribute-back
 
