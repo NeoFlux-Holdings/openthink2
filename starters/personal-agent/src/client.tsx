@@ -37,10 +37,50 @@ const clientConfig = {
 } as const;
 
 function App() {
+  // Toggle the Persona 3-column shell via ?shell=persona, the legacy
+  // single-pane chat is the default until the per-artifact viewers are
+  // ported over. See apps/docs/docs/guide/persona-shell.md.
+  const usePersonaShell =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("shell") === "persona";
+  if (usePersonaShell) {
+    return <PersonaShellMount />;
+  }
   return (
     <main className="app">
       <Chat />
     </main>
+  );
+}
+
+function PersonaShellMount() {
+  const PersonaShell = lazy(async () => {
+    await import("./persona-shell.css");
+    const mod = await import("./persona-shell");
+    return { default: mod.PersonaShell };
+  });
+  const noop = () => {};
+  return (
+    <Suspense fallback={<main className="app"><div style={{ padding: 24 }}>Loading shell…</div></main>}>
+      <PersonaShell
+        workspaceName={clientConfig.agentName}
+        ownerEmail=""
+        recentThreads={[]}
+        artifacts={[]}
+        workingDoc=""
+        pendingLearningCount={0}
+        pendingSkillsCount={0}
+        onSelectThread={noop}
+        onNewTask={noop}
+        onOpenSearch={noop}
+        onOpenLibrary={noop}
+        onOpenLearning={noop}
+        onOpenSkills={noop}
+        onOpenSettings={noop}
+        threadView={<Chat />}
+        composer={<div style={{ color: "#5e5e66", fontSize: 13 }}>Composer integrated into the chat view above for now.</div>}
+      />
+    </Suspense>
   );
 }
 

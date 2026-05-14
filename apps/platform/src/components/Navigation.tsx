@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Cloud, GitBranch, ShieldCheck, TerminalSquare, Workflow } from "lucide-react";
+import { Bot, Brain, Cloud, GitBranch, ShieldCheck, TerminalSquare, Workflow } from "lucide-react";
 
 const navItems = [
   { href: "/deploy", label: "Deploy", icon: Cloud },
   { href: "/chat", label: "Chat", icon: Bot },
   { href: "/terminal", label: "Terminal", icon: TerminalSquare },
+  { href: "/learning", label: "Learning", icon: Brain },
   { href: "/sync", label: "Sync", icon: GitBranch },
   { href: "/admin", label: "Admin", icon: ShieldCheck }
 ];

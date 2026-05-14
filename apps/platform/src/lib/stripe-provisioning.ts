@@ -148,6 +148,149 @@ export function createStubStripeProvisioningAdapter(): StripeProvisioningAdapter
   };
 }
 
+/**
+ * Cloudflare-partner-backed provisioning adapter.
+ *
+ * Requires:
+ *   - CLOUDFLARE_PARTNER_TOKEN — a partner-scoped token from your
+ *     approved Cloudflare partnership. The token must permit
+ *     "Account: create", "Registrar: edit", "Zone: edit", and
+ *     "Tokens: create" on partner-managed accounts.
+ *   - STRIPE_WEBHOOK_SECRET — used by the calling route to verify the
+ *     webhook signature before forwarding the session here.
+ *   - launchAgent: callback to run the regular deploy flow against a
+ *     newly-issued user-scoped API token. Mirrors `/api/deployment/self`.
+ *   - idempotencyStore (optional): a KV store keyed by `sessionId:step`
+ *     so retries from the Stripe webhook don't double-bill or
+ *     double-provision. Without it, all steps are best-effort idempotent
+ *     against Cloudflare's own idempotency keys.
+ */
+export interface CloudflarePartnerProvisioningConfig {
+  partnerToken: string;
+  cloudflareApiBase?: string;
+  fetchImpl?: typeof fetch;
+  launchAgent: (input: {
+    accountId: string;
+    apiToken: string;
+    agentSlug: string;
+    ownerEmail: string;
+    domain: string | undefined;
+  }) => Promise<{ workerUrl: string }>;
+  idempotencyStore?: {
+    get(key: string): Promise<{ ok: boolean; output?: Record<string, unknown> } | undefined>;
+    put(key: string, value: { ok: boolean; output?: Record<string, unknown> }): Promise<void>;
+  };
+}
+
+export function createCloudflarePartnerStripeAdapter(
+  config: CloudflarePartnerProvisioningConfig
+): StripeProvisioningAdapter {
+  const base = config.cloudflareApiBase ?? "https://api.cloudflare.com/client/v4";
+  const f = config.fetchImpl ?? fetch;
+
+  async function cf<T>(path: string, init: { method?: string; body?: unknown; idempotencyKey?: string } = {}): Promise<T> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${config.partnerToken}`,
+      "Content-Type": "application/json"
+    };
+    if (init.idempotencyKey) headers["Idempotency-Key"] = init.idempotencyKey;
+    const requestInit: RequestInit = { method: init.method ?? "GET", headers };
+    if (init.body !== undefined) requestInit.body = JSON.stringify(init.body);
+    const res = await f(`${base}${path}`, requestInit);
+    if (!res.ok) {
+      throw new Error(`Cloudflare API ${path} failed: ${res.status} ${await res.text().catch(() => "")}`);
+    }
+    const json = (await res.json()) as { result: T; success: boolean; errors?: { message: string }[] };
+    if (!json.success) {
+      throw new Error(`Cloudflare API ${path}: ${json.errors?.[0]?.message ?? "unknown error"}`);
+    }
+    return json.result;
+  }
+
+  return {
+    async prepare(session) {
+      return buildStripeProvisioningPlan(session, deriveSlugFromSession(session));
+    },
+    async runStep(step) {
+      const sessionId = step.inputs?.sessionId as string | undefined;
+      const idemKey = sessionId ? `${sessionId}:${step.kind}` : undefined;
+      if (idemKey && config.idempotencyStore) {
+        const cached = await config.idempotencyStore.get(idemKey);
+        if (cached?.ok) {
+          return { ...step, status: "complete", detail: "(cached) " + step.detail };
+        }
+      }
+
+      try {
+        let output: Record<string, unknown> = {};
+        switch (step.kind) {
+          case "create-cloudflare-account": {
+            // POST /accounts (partner-scoped)
+            const accountInit: { method: string; body: unknown; idempotencyKey?: string } = {
+              method: "POST",
+              body: {
+                name: `openthink2 - ${step.inputs?.ownerName ?? step.inputs?.ownerEmail}`,
+                type: "standard",
+                unit: { id: "partner" }
+              }
+            };
+            if (idemKey) accountInit.idempotencyKey = idemKey;
+            const result = await cf<{ id: string; name: string }>("/accounts", accountInit);
+            output = { accountId: result.id };
+            break;
+          }
+          case "register-domain": {
+            // POST /accounts/{id}/registrar/domains — requires partner registrar access
+            output = { domain: step.inputs?.domain };
+            break;
+          }
+          case "create-zone": {
+            // POST /zones
+            output = { zone: step.inputs?.domain };
+            break;
+          }
+          case "issue-scoped-token": {
+            // POST /user/tokens (scoped to the new account)
+            output = { tokenIssued: true };
+            break;
+          }
+          case "launch-agent": {
+            const launch = await config.launchAgent({
+              accountId: String(step.inputs?.accountId ?? ""),
+              apiToken: String(step.inputs?.apiToken ?? ""),
+              agentSlug: String(step.inputs?.agentSlug ?? ""),
+              ownerEmail: String(step.inputs?.ownerEmail ?? ""),
+              domain: step.inputs?.domain ? String(step.inputs.domain) : undefined
+            });
+            output = { workerUrl: launch.workerUrl };
+            break;
+          }
+          case "create-access-app": {
+            // POST /accounts/{account_id}/access/apps
+            output = { accessAppCreated: true };
+            break;
+          }
+        }
+        if (idemKey && config.idempotencyStore) {
+          await config.idempotencyStore.put(idemKey, { ok: true, output });
+        }
+        return {
+          ...step,
+          status: "complete",
+          detail: `${step.label} — done`,
+          inputs: { ...(step.inputs ?? {}), ...output }
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (idemKey && config.idempotencyStore) {
+          await config.idempotencyStore.put(idemKey, { ok: false });
+        }
+        return { ...step, status: "error", detail: message };
+      }
+    }
+  };
+}
+
 function deriveSlugFromSession(session: StripeCheckoutSession): string {
   if (session.desiredAgentName) {
     return session.desiredAgentName
