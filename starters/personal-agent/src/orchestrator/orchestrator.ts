@@ -21,7 +21,7 @@ import type {
 
 export interface OrchestratorContextSnapshot {
   workspaceId: string;
-  activeThreadId?: string;
+  activeThreadId: string | undefined;
   recentThreadIds: string[];
   workingDoc: string;
   goals: { id: string; title: string; status: "active" | "done" | "blocked"; updatedAt: string }[];

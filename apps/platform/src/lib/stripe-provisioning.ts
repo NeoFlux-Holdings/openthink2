@@ -109,13 +109,14 @@ export function buildStripeProvisioningPlan(
       inputs: { ownerEmail: session.customerEmail }
     }
   );
-  return {
+  const plan: StripeProvisioningPlan = {
     sessionId: session.id,
     customerEmail: session.customerEmail,
     agentName: agentSlug,
-    domain: session.desiredDomain,
     steps
   };
+  if (session.desiredDomain) plan.domain = session.desiredDomain;
+  return plan;
 }
 
 export interface StripeProvisioningAdapter {

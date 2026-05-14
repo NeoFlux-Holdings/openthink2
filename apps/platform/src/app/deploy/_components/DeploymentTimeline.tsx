@@ -27,7 +27,8 @@ function MarkerIcon({ status }: { status: DeploymentEventStatus }) {
 }
 
 function pickOverall(events: DeploymentEvent[], isDeploying: boolean) {
-  if (events.length === 0) {
+  const last = events[events.length - 1];
+  if (events.length === 0 || !last) {
     return {
       progress: 0,
       status: (isDeploying ? "active" : "pending") as DeploymentEventStatus,
@@ -37,7 +38,6 @@ function pickOverall(events: DeploymentEvent[], isDeploying: boolean) {
         : "Fill in the form and hit Launch. We'll stream every step right here."
     };
   }
-  const last = events[events.length - 1];
   const hasError = events.some((e) => e.status === "error");
   const allDone = events.every((e) => e.status === "complete");
   const progress = Math.max(

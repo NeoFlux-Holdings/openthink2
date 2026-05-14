@@ -68,8 +68,9 @@ export async function runEvolveLoop(inputs: EvolveInputs): Promise<EvolveSuggest
 
   const evidenceIds = inputs.traces.map((t) => t.id);
 
-  const skills: SkillSuggestion[] = (parsed.skills ?? []).map(
-    (s: Partial<SkillSuggestion>, i: number) => ({
+  const skills: SkillSuggestion[] = (parsed.skills ?? []).map((raw, i): SkillSuggestion => {
+    const s = raw as Partial<SkillSuggestion>;
+    return {
       id: `sug-skill-${Date.now()}-${i}`,
       kind: "skill",
       name: s.name ?? `Learned skill ${i + 1}`,
@@ -79,11 +80,12 @@ export async function runEvolveLoop(inputs: EvolveInputs): Promise<EvolveSuggest
       evidenceTraceIds: evidenceIds,
       confidence: typeof s.confidence === "number" ? clamp01(s.confidence) : 0.5,
       status: "pending"
-    })
-  );
+    };
+  });
 
-  const rubrics: RubricSuggestion[] = (parsed.rubrics ?? []).map(
-    (r: Partial<RubricSuggestion>, i: number) => ({
+  const rubrics: RubricSuggestion[] = (parsed.rubrics ?? []).map((raw, i): RubricSuggestion => {
+    const r = raw as Partial<RubricSuggestion>;
+    return {
       id: `sug-rubric-${Date.now()}-${i}`,
       kind: "rubric",
       name: r.name ?? `Learned rubric ${i + 1}`,
@@ -91,11 +93,12 @@ export async function runEvolveLoop(inputs: EvolveInputs): Promise<EvolveSuggest
       evidenceTraceIds: evidenceIds,
       confidence: typeof r.confidence === "number" ? clamp01(r.confidence) : 0.5,
       status: "pending"
-    })
-  );
+    };
+  });
 
-  const prompts: PromptSuggestion[] = (parsed.prompts ?? []).map(
-    (p: Partial<PromptSuggestion>, i: number) => ({
+  const prompts: PromptSuggestion[] = (parsed.prompts ?? []).map((raw, i): PromptSuggestion => {
+    const p = raw as Partial<PromptSuggestion>;
+    return {
       id: `sug-prompt-${Date.now()}-${i}`,
       kind: "prompt",
       scope: p.scope ?? "orchestrator",
@@ -105,8 +108,8 @@ export async function runEvolveLoop(inputs: EvolveInputs): Promise<EvolveSuggest
       evidenceTraceIds: evidenceIds,
       confidence: typeof p.confidence === "number" ? clamp01(p.confidence) : 0.5,
       status: "pending"
-    })
-  );
+    };
+  });
 
   const all: EvolveSuggestion[] = [...skills, ...rubrics, ...prompts];
 

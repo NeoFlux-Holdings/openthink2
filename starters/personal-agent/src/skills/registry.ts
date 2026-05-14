@@ -61,6 +61,7 @@ const cloudflareSkills: Skill[] = [
       "Keep Worker handlers small, externalize state to Durable Objects / KV / D1, prefer streaming, mind isolate startup and the 30s CPU budget.",
     enabled: true,
     pinned: true,
+    toolBindings: ["workers.deploy", "wrangler.run"],
     systemPromptFragment:
       "When writing Cloudflare Workers: keep handlers thin, externalize durable state, prefer streaming responses, watch CPU budget, never block the event loop on synchronous work.",
     knowledgeUrls: [
@@ -68,7 +69,6 @@ const cloudflareSkills: Skill[] = [
       "https://developers.cloudflare.com/agents/",
       "https://developers.cloudflare.com/workflows/build/events-and-parameters/"
     ],
-    toolBindings: ["workers.deploy", "wrangler.run"],
     tags: ["cloudflare", "workers", "infrastructure"],
     version: "1.0.0",
     createdAt: now(),
@@ -101,6 +101,7 @@ const cloudflareSkills: Skill[] = [
       "Build MCP servers on Workers with the cloudflare/mcp toolkit. Prefer RPC transport for same-Worker traffic, Streamable HTTP for cross-account.",
     enabled: true,
     pinned: false,
+    toolBindings: [],
     knowledgeUrls: ["https://github.com/cloudflare/mcp", "https://blog.cloudflare.com/code-mode-mcp/"],
     tags: ["cloudflare", "mcp"],
     version: "1.0.0",
@@ -117,6 +118,7 @@ const anthropicSkills: Skill[] = [
     description: "Best practices for Claude tool-use: tight schemas, idempotent tools, retry-on-shape-mismatch.",
     enabled: true,
     pinned: false,
+    toolBindings: [],
     knowledgeUrls: ["https://github.com/anthropics/skills"],
     tags: ["anthropic", "tool-use"],
     version: "1.0.0",
@@ -131,6 +133,7 @@ const anthropicSkills: Skill[] = [
       "Iterative coding: read before edit, prefer Edit over Write, keep comments minimal, run tests before claiming done.",
     enabled: true,
     pinned: false,
+    toolBindings: [],
     knowledgeUrls: ["https://github.com/anthropics/skills"],
     tags: ["anthropic", "coding"],
     version: "1.0.0",
@@ -148,6 +151,7 @@ const openaiSkills: Skill[] = [
       "Autonomous retraining loop: collect run traces, score outcomes, summarize wins/regressions, propose prompt+skill updates.",
     enabled: false,
     pinned: false,
+    toolBindings: [],
     knowledgeUrls: [
       "https://developers.openai.com/cookbook/examples/partners/self_evolving_agents/autonomous_agent_retraining",
       "https://github.com/openai/skills"
@@ -167,6 +171,7 @@ const aiHeroSkills: Skill[] = [
     description: "Curated starter playbooks for research, summarization, transcription, and ETL flows.",
     enabled: false,
     pinned: false,
+    toolBindings: [],
     knowledgeUrls: ["https://www.aihero.dev/skills.md"],
     tags: ["ai-hero", "starter"],
     version: "1.0.0",

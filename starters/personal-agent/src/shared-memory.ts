@@ -34,7 +34,7 @@ export interface SharedMemoryRecord {
   id: string;
   workspaceId: string;
   agentId: string;
-  threadId?: string;
+  threadId: string | undefined;
   kind: "fact" | "preference" | "context" | "skill-note" | "rubric";
   text: string;
   tags: string[];
