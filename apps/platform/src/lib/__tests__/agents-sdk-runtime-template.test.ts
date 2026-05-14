@@ -79,14 +79,16 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
       { name: "ORCHESTRATOR", class_name: "OrchestratorAgent" },
       { name: "AGENT_CODER", class_name: "AgentCoder" },
       { name: "AGENT_RESEARCHER", class_name: "AgentResearcher" },
-      { name: "AGENT_BROWSER", class_name: "AgentBrowser" }
+      { name: "AGENT_BROWSER", class_name: "AgentBrowser" },
+      { name: "VOICE", class_name: "VoiceAgent" }
     ]);
     expect(wrangler.migrations[0].new_sqlite_classes).toEqual([
       "PersonalChatAgent",
       "OrchestratorAgent",
       "AgentCoder",
       "AgentResearcher",
-      "AgentBrowser"
+      "AgentBrowser",
+      "VoiceAgent"
     ]);
     expect(wrangler.kv_namespaces).toEqual([
       { binding: "WORKSPACE_FILES", id: "replace-me" }

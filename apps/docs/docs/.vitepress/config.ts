@@ -29,6 +29,7 @@ export default defineConfig({
           { text: "Workflows (JSX + Effect)", link: "/guide/workflows" },
           { text: "Persona Shell (UI)", link: "/guide/persona-shell" },
           { text: "Smithery (MCP registry)", link: "/guide/smithery" },
+          { text: "Voice + Hibernation", link: "/guide/voice-and-hibernation" },
           { text: "Hosted Cloud Agent", link: "/guide/hosted-cloud-agent" },
           { text: "Effect Executor", link: "/guide/effect-executor" }
         ]

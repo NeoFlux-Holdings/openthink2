@@ -46,6 +46,10 @@ export interface PersonaSettings {
   executionLanes: ExecutionLane[];
   smitheryApiKey: string;
   executorWorkosToken: string;
+  voiceEnabled: boolean;
+  voiceSilenceThreshold: number;
+  voiceSilenceDurationMs: number;
+  voiceInterruptThreshold: number;
 }
 
 export const defaultPersonaSettings: PersonaSettings = {
@@ -58,7 +62,11 @@ export const defaultPersonaSettings: PersonaSettings = {
   trainingMode: "review",
   executionLanes: ["in-worker"],
   smitheryApiKey: "",
-  executorWorkosToken: ""
+  executorWorkosToken: "",
+  voiceEnabled: false,
+  voiceSilenceThreshold: 0.04,
+  voiceSilenceDurationMs: 500,
+  voiceInterruptThreshold: 0.05
 };
 
 export const THINKING_BUDGET_MIN = 1_000;
@@ -291,6 +299,84 @@ export function SettingsPage({ settings, onUpdate }: SettingsPageProps) {
               autoComplete="off"
             />
             <small>Obtained by signing in at executor.sh. Stored as OPEN_THINK_EXECUTOR_WORKOS_TOKEN.</small>
+          </div>
+        )}
+      </div>
+
+      <div className="persona-settings__section">
+        <header>
+          <h3>Voice</h3>
+          <p>Talk to your agent. Mic stays disabled until you grant permission; the WebSocket only opens once permission is granted (Agents SDK v0.12.4 connection control).</p>
+        </header>
+        <label className="persona-settings__toggle">
+          <input
+            type="checkbox"
+            checked={settings.voiceEnabled}
+            onChange={(event) =>
+              onUpdate(buildSettingsPatch("voiceEnabled", event.target.checked))
+            }
+          />
+          <span>Enable voice console</span>
+        </label>
+        {settings.voiceEnabled && (
+          <div className="persona-settings__voice-tuning">
+            <label className="persona-settings__field">
+              <span>Silence threshold</span>
+              <input
+                type="range"
+                min={0}
+                max={0.5}
+                step={0.01}
+                value={settings.voiceSilenceThreshold}
+                onChange={(event) =>
+                  onUpdate(
+                    buildSettingsPatch(
+                      "voiceSilenceThreshold",
+                      Number.parseFloat(event.target.value)
+                    )
+                  )
+                }
+              />
+              <small>{settings.voiceSilenceThreshold.toFixed(2)} — lower = pickier mic.</small>
+            </label>
+            <label className="persona-settings__field">
+              <span>End turn after silence (ms)</span>
+              <input
+                type="range"
+                min={100}
+                max={3000}
+                step={50}
+                value={settings.voiceSilenceDurationMs}
+                onChange={(event) =>
+                  onUpdate(
+                    buildSettingsPatch(
+                      "voiceSilenceDurationMs",
+                      Number.parseInt(event.target.value, 10)
+                    )
+                  )
+                }
+              />
+              <small>{settings.voiceSilenceDurationMs} ms</small>
+            </label>
+            <label className="persona-settings__field">
+              <span>Interrupt threshold</span>
+              <input
+                type="range"
+                min={0}
+                max={0.5}
+                step={0.01}
+                value={settings.voiceInterruptThreshold}
+                onChange={(event) =>
+                  onUpdate(
+                    buildSettingsPatch(
+                      "voiceInterruptThreshold",
+                      Number.parseFloat(event.target.value)
+                    )
+                  )
+                }
+              />
+              <small>{settings.voiceInterruptThreshold.toFixed(2)} — how loud you have to talk to barge in.</small>
+            </label>
           </div>
         )}
       </div>

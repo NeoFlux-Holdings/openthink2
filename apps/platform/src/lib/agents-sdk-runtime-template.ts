@@ -90,6 +90,7 @@ function renderPackageJson(): Record<string, unknown> {
       "@ai-sdk/react": "^3.0.0",
       "@cloudflare/ai-chat": "^0.6.2",
       "@cloudflare/think": "^0.4.2",
+      "@cloudflare/voice": "^0.2.0",
       "@modelcontextprotocol/sdk": "^1.20.0",
       agents: "^0.12.4",
       ai: "^6.0.174",
@@ -148,7 +149,8 @@ export function renderAgentsSdkWranglerJsonc(
         { name: "ORCHESTRATOR", class_name: "OrchestratorAgent" },
         { name: "AGENT_CODER", class_name: "AgentCoder" },
         { name: "AGENT_RESEARCHER", class_name: "AgentResearcher" },
-        { name: "AGENT_BROWSER", class_name: "AgentBrowser" }
+        { name: "AGENT_BROWSER", class_name: "AgentBrowser" },
+        { name: "VOICE", class_name: "VoiceAgent" }
       ]
     },
     migrations: [
@@ -159,7 +161,8 @@ export function renderAgentsSdkWranglerJsonc(
           "OrchestratorAgent",
           "AgentCoder",
           "AgentResearcher",
-          "AgentBrowser"
+          "AgentBrowser",
+          "VoiceAgent"
         ]
       }
     ],
@@ -3605,13 +3608,18 @@ import {
 } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
+import { withVoice, WorkersAIFluxSTT, WorkersAITTS } from "@cloudflare/voice";
 import {
+  attachConnectionMetadata,
   buildOrchestratorSystemPrompt,
+  buildVoiceTurnHandler,
   createProposePr,
+  defaultVoiceSettings,
   gateToolCall,
   handleSlashCommand,
   initOrchestrator,
   recordTraceAndMaybeEvolve,
+  supportsHibernation,
   type AgentDescriptor,
   type OrchestratorEnvBase,
   type OrchestratorRuntime
@@ -4872,6 +4880,71 @@ export class AgentBrowser extends McpAgent<RuntimeEnv> {
         }
       }
     );
+  }
+}
+
+// ============================================================================
+// VoiceAgent — voice channel into the orchestrator.
+//
+// Built on @cloudflare/voice's withVoice(Agent) mixin. STT goes through
+// Workers AI (WorkersAIFluxSTT), TTS goes through Workers AI (WorkersAITTS).
+// onTurn() routes /goal commands first, then assembles the orchestrator
+// system prompt and streams the model response back through the voice
+// pipeline.
+//
+// The WebSocket is hibernation-aware: per-connection workspace + voice
+// settings are attached via serializeAttachment so wakeups land in the
+// same context without re-reading DO storage.
+// ============================================================================
+
+const VoiceBase = withVoice(Agent, { historyLimit: 20, audioFormat: "mp3" });
+
+export class VoiceAgent extends VoiceBase<RuntimeEnv> {
+  // @ts-expect-error Workers AI binding type is supplied at deploy time.
+  transcriber = new WorkersAIFluxSTT(this.env.AI);
+  // @ts-expect-error Workers AI binding type is supplied at deploy time.
+  tts = new WorkersAITTS(this.env.AI);
+
+  async onCallStart(connection: { socket?: unknown }) {
+    if (connection.socket && supportsHibernation(connection.socket)) {
+      attachConnectionMetadata(connection.socket, {
+        workspaceId: String(this.env.OPEN_THINK_WORKSPACE_ID ?? "default"),
+        voice: defaultVoiceSettings,
+        extras: { source: "voice" }
+      });
+    }
+  }
+
+  async onTurn(transcript: string, ctx: { messages: { role: string; content: string }[]; signal: AbortSignal }) {
+    const runtime = await initOrchestrator({
+      agent: this as never,
+      children: []
+    });
+    const handler = buildVoiceTurnHandler({
+      runtime,
+      llm: {
+        async stream({ system, messages }) {
+          const env = runtime.env;
+          const ai = (env.AI ?? null) as { run?: (m: string, i: unknown) => Promise<unknown> } | null;
+          if (!ai?.run) {
+            async function* fallback() {
+              yield "Voice agent has no AI binding — wire env.AI in wrangler.jsonc.";
+            }
+            return fallback();
+          }
+          const result = (await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+            messages: [{ role: "system", content: system }, ...messages],
+            stream: false
+          })) as { response?: string };
+          const text = result.response ?? "";
+          async function* once() {
+            yield text;
+          }
+          return once();
+        }
+      }
+    });
+    return handler(transcript, { connection: {}, messages: ctx.messages, signal: ctx.signal });
   }
 }
 

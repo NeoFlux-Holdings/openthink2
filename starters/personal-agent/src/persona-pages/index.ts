@@ -69,3 +69,12 @@ export {
   type TrainPlanEditorProps,
   type TrainPlanMode
 } from "./train-plan-editor";
+
+export {
+  VoiceConsole,
+  useMicPermission,
+  type UseVoiceAgentInput,
+  type UseVoiceAgentOutput,
+  type VoiceConsoleProps,
+  type VoiceConsoleSettings
+} from "./voice-console";
