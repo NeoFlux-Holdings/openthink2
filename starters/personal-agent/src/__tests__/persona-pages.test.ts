@@ -7,7 +7,12 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_QUICK_ACTIONS,
+  DEFAULT_TEMPLATES,
   LibraryPage,
+  PersonaComposer,
+  PersonaHome,
+  PersonaThreadFeed,
   SearchPalette,
   SettingsPage,
   SkillsPage,
@@ -33,6 +38,27 @@ describe("persona-pages module surface", () => {
     expect(typeof SkillsPage).toBe("function");
     expect(typeof SettingsPage).toBe("function");
     expect(typeof SearchPalette).toBe("function");
+  });
+
+  it("exports the Persona home / thread / composer components as functions", () => {
+    expect(typeof PersonaHome).toBe("function");
+    expect(typeof PersonaThreadFeed).toBe("function");
+    expect(typeof PersonaComposer).toBe("function");
+  });
+
+  it("ships sensible quick actions and templates", () => {
+    expect(DEFAULT_QUICK_ACTIONS.length).toBeGreaterThanOrEqual(5);
+    expect(DEFAULT_QUICK_ACTIONS.map((action) => action.id)).toContain("write");
+    expect(DEFAULT_QUICK_ACTIONS.map((action) => action.id)).toContain("research");
+    expect(DEFAULT_TEMPLATES.length).toBe(6);
+    expect(DEFAULT_TEMPLATES.map((template) => template.id)).toEqual([
+      "coder",
+      "researcher",
+      "writer",
+      "browser",
+      "messenger",
+      "planner"
+    ]);
   });
 });
 

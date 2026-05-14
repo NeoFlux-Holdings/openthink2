@@ -142,6 +142,20 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
     expect(personaIndex).toContain('from "./persona-composer"');
     expect(personaIndex).not.toContain("library-page");
 
+    // Each emitted .tsx file must transpile cleanly.
+    for (const personaFile of [personaApp, personaHome, threadFeed, composer]) {
+      const diags =
+        ts.transpileModule(personaFile, {
+          compilerOptions: {
+            jsx: ts.JsxEmit.ReactJSX,
+            module: ts.ModuleKind.ESNext,
+            target: ts.ScriptTarget.ES2022
+          },
+          reportDiagnostics: true
+        }).diagnostics ?? [];
+      expect(diags).toEqual([]);
+    }
+
     expect(client).toContain('import { useAgent } from "agents/react"');
     expect(client).toContain("getToolApproval");
     expect(client).toContain("getAgentMessages");

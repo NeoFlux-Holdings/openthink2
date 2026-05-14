@@ -94,30 +94,63 @@ await agent.sendSubAgentMessage(child.subAgent.id, "Continue.");
 
 ## Onboarding (the deploy form)
 
-The `/deploy` page is the one-screen onboarding flow:
+The `/deploy` page is a **three-step wizard** with one step visible at a time
+and a dot indicator at the top. The form does the minimum we need to launch;
+everything else is configured after on the deployed agent.
 
-1. **Agent name** — defaults to a fresh fun two-word hyphenated name (e.g.
-   `amber-otter`); a Shuffle button picks another. Editable.
-2. **Cloudflare API token** — a one-click button opens the Cloudflare
-   dashboard pre-loaded with exactly the permissions we need (Workers,
-   Artifacts, Cloudchamber/Containers, D1, R2, Queues, Vectorize, Workers
-   AI, AI Gateway, Pages, KV, Access, Zone read, DNS, Workers Routes,
-   Account Settings, User Details).
-3. **Token verify** — we read the account id, owner email, and zones from
-   the token; nothing about the raw token leaves the user's browser except a
-   server-side fingerprint.
-4. **Access lockdown** — defaults to the email on the token; the user can
-   add more emails. The deployed Worker is fronted by a Cloudflare Access
-   self-hosted application with that email allow policy.
-5. **Optional custom domain** — pick a zone, accept the suggested subdomain
-   (the agent slug) or write your own; DNS + Worker route are provisioned.
-6. **Approval mode** — full-auto / smart-auto / manual; spend cap per task.
-7. **Personal agent subsystem** — pick a preset (default
-   `openthink-gbrain-gstack`) or go custom.
+1. **Your agent.** Agent name (pre-filled with a fun two-word slug like
+   `amber-otter`; Shuffle button picks another) and Cloudflare API token. A
+   giant "Open Cloudflare dashboard" button opens the token-creation page
+   pre-loaded with exactly the permissions we need (Workers, Artifacts,
+   Cloudchamber/Containers, D1, R2, Queues, Vectorize, Workers AI, AI
+   Gateway, Pages, KV, Access, Zone read, DNS, Workers Routes, Account
+   Settings, User Details). Verify-token auto-advances on success and pulls
+   the account id, owner email, and zones from the token — nothing about
+   the raw token leaves the user's browser except a server-side
+   fingerprint.
+2. **Lock it down.** Access email auto-filled from the token, optional
+   teammates (collapsed), optional custom domain (off by default; toggle
+   exposes a zone picker + subdomain). An "Advanced" disclosure (closed by
+   default) holds spend cap, default model, and approval mode.
+3. **Launch.** Summary card + one big Launch button + a lock-icon
+   fineprint about token privacy.
 
-Every step streams progress through the redesigned deploy timeline with
-status pill, animated progress bar, and resource chips for the D1 / R2 /
-Worker / Access app being created.
+Once launched, the page swaps to a post-launch view that streams the
+provisioning progress through the redesigned deploy timeline (status pill,
+animated progress bar, resource chips for the D1 / R2 / Worker / Access
+app being created). When it reaches `complete`:
+
+- A "Visit your agent →" button to the deployed Worker URL.
+- An **Updates** card with an auto-update switch (ON by default) and a
+  "Check for updates now" button calling `/api/sync/manual` against the
+  upstream public repo.
+- A **Manage** card linking to the agent's `/chat`, `/learning`,
+  `/terminal`, `/sync`, and `/admin` surfaces.
+
+The result is persisted to `localStorage["openthink:lastLaunch"]` so a
+return visit hydrates straight into the post-launch view instead of the
+wizard.
+
+## The deployed agent UI
+
+The deployed agent ships the Persona three-column shell **as the default**
+(legacy single-pane chat is opt-in via `?shell=legacy`):
+
+- **Sidebar** — New Task, Search, Library, Learning, Skills, Recent
+  threads, Settings. Collapses entirely on mobile.
+- **Thread feed** — "What do you need done?" home screen (textarea, six
+  quick-action chips, Auto / Plan-first / Train mode toggle, attachment,
+  template carousel) when no active thread; the message stream with
+  editable title, agent dot, status chip, animated progress bar,
+  dismissible working-doc chip, collapsible "Reasoned ▸" sections,
+  inline tool-call chips, follow-up suggestion chips, and hover actions
+  when a thread is active.
+- **Artifact canvas** — document / browser / webpage / slides / table /
+  image / code / chart / diff viewers, single / grid / stack windowing.
+- **Composer** — sticky bottom, plan-mode pill, attachment, ⌘/Ctrl+Enter,
+  optional cost-estimate chip.
+
+The whole UI is mobile-first and respects `prefers-reduced-motion`.
 
 ## Run locally
 
@@ -247,11 +280,23 @@ User keys live in Worker secrets:
 
 ## Persona shell — the deployed agent UI
 
-The deployed personal agent ships with a three-column Persona shell
-(opt-in via `?shell=persona` in the agent URL):
+The deployed personal agent ships with a three-column Persona shell as
+the default UI. The legacy single-pane chat is still reachable via
+`?shell=legacy` for backwards compatibility.
 
 - `starters/personal-agent/src/persona-shell.tsx` — sidebar / thread
   feed / artifact canvas grid with single / grid / stack windowing.
+- `starters/personal-agent/src/persona-app.tsx` — top-level wrapper
+  that wires the shell slots to Persona-native Home, Thread Feed, and
+  Composer components and routes sidebar callbacks to internal views.
+- `starters/personal-agent/src/persona-pages/persona-home.tsx` — the
+  "What do you need done?" home screen with quick actions, mode
+  toggle, attachments, recent threads, and template carousel.
+- `starters/personal-agent/src/persona-pages/persona-thread-feed.tsx` —
+  message bubbles with reasoned collapsible, status line, tool chips,
+  working doc chip, follow-up suggestions, and message actions.
+- `starters/personal-agent/src/persona-pages/persona-composer.tsx` —
+  sticky composer with attachment, plan toggle, and ⌘/Ctrl+Enter.
 - `starters/personal-agent/src/persona-views/*` — one viewer per
   artifact kind: document, code, browser session (live screenshot
   stream), webpage (mobile/desktop iframe toggle), slides, table
@@ -259,9 +304,6 @@ The deployed personal agent ships with a three-column Persona shell
   `artifact-router.tsx`.
 - `starters/personal-agent/src/persona-pages/*` — Library, Skills,
   Settings, and Search palette pages reachable from the sidebar.
-
-The legacy single-pane chat stays the default until the per-artifact
-viewers are wired into the existing chat surface.
 
 ## Sync model + update + contribute-back
 
