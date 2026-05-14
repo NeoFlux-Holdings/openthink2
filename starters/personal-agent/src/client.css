@@ -16,6 +16,13 @@
   --sans: "Aptos", "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
   --radius: 8px;
   --radius-sm: 6px;
+  /* Responsive breakpoints — three-tier sweep: desktop / tablet / mobile.
+     Used in @media queries below; redeclared inline because @media can't
+     read custom properties directly, but the tokens document intent. */
+  --bp-desktop: 1100px;
+  --bp-tablet: 900px;
+  --bp-mobile: 620px;
+  --tap-target: 44px;
 }
 
 * {
@@ -228,7 +235,7 @@ button {
 .message {
   display: grid;
   gap: 7px;
-  max-width: min(820px, 92%);
+  max-width: min(820px, 70%);
   line-height: 1.5;
 }
 
@@ -936,6 +943,31 @@ pre {
   background: rgba(180, 59, 53, 0.08);
 }
 
+/* ---------------------------------------------------------------
+   Desktop tier — anything between --bp-tablet (900px) and the
+   widest viewport. The default rules above already cover the full
+   desktop chrome (two-column grid, side-panel sidebar, etc.), so
+   this block only adds nudges that depend on having horizontal
+   room — e.g. wider message bubbles inside the chat panel.
+   --------------------------------------------------------------- */
+@media (min-width: 1100px) {
+  .message {
+    max-width: min(820px, 70%);
+  }
+
+  .workspace {
+    /* Full chrome at desktop: keep the explicit two-column ratio so
+       the side-panel never crowds the chat list as content grows. */
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  }
+}
+
+/* ---------------------------------------------------------------
+   Tablet tier — collapse the right-hand side panel into a bottom
+   drawer. The side panel is the home of the sub-agent console and
+   hosted-agent panel, so on tablet+down those become a bottom
+   disclosure surface that scrolls independently of the chat list.
+   --------------------------------------------------------------- */
 @media (max-width: 900px) {
   body {
     overflow: auto;
@@ -950,6 +982,7 @@ pre {
   .workspace {
     grid-template-columns: 1fr;
     height: auto;
+    gap: 12px;
   }
 
   .chat-panel {
@@ -957,25 +990,146 @@ pre {
   }
 
   .side-panel {
-    max-height: none;
-    overflow: visible;
+    /* Bottom-drawer treatment: bounded height with internal scroll
+       so the chat stays the primary focus. The user reads top-down
+       and the runtime details / sub-agent console live below the
+       fold. */
+    max-height: 60dvh;
+    overflow: auto;
+    border-radius: var(--radius);
+    box-shadow: 0 -10px 28px rgba(37, 31, 23, 0.06), 0 16px 38px rgba(37, 31, 23, 0.04);
+  }
+
+  /* On tablet, the hosted-agent and subagent panels each pack into
+     their own collapsible discovery zones with a clear divider. */
+  .hosted-agent-panel,
+  .subagent-console {
+    padding-top: 10px;
+  }
+
+  /* Tool group summaries gain a little more padding so they read as
+     a tap target before we get to the mobile rules below. */
+  .tool-group > summary {
+    padding: 12px;
   }
 }
 
+/* ---------------------------------------------------------------
+   Mobile tier — single column, message list owns the viewport,
+   composer sticky at the bottom, every approval/tool button is a
+   ≥44px tap target stacked full-width.
+   --------------------------------------------------------------- */
 @media (max-width: 620px) {
   .topbar,
   .workspace {
     width: min(100% - 18px, 1440px);
   }
 
+  .topbar {
+    padding: 12px 0;
+  }
+
+  .workspace {
+    padding: 10px 0;
+  }
+
+  /* Composer: sticky at the bottom of the chat panel so the input
+     stays in reach as the message list scrolls. The grid collapses
+     to one column but the send button stays in its own row at the
+     top-right of the composer (achieved by reordering grid areas
+     so it sits flush with the textarea on the same row, with the
+     mic / aux controls wrapping below if present). */
   .composer {
-    grid-template-columns: 1fr;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
   }
 
+  .composer textarea {
+    min-height: var(--tap-target);
+  }
+
+  .composer .button {
+    min-height: var(--tap-target);
+    min-width: var(--tap-target);
+    align-self: end;
+  }
+
+  /* Message bubbles span almost the full width on mobile. */
   .message {
-    max-width: 100%;
+    max-width: 92%;
   }
 
+  .message[data-role="user"] {
+    /* User bubbles keep their right-aligned identity even at the
+       wider mobile max. */
+    justify-self: end;
+  }
+
+  /* Tool group accordions: full-width tap target on the summary,
+     ≥44px high, and Raw details details element keeps its style. */
+  .tool-group > summary {
+    min-height: var(--tap-target);
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .tool-group-meta {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .tool-group-toggle {
+    /* Keep the toggle hint compact so it doesn't crowd the title. */
+    flex: 0 0 auto;
+  }
+
+  .tool-raw-details > summary {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Approval prompts on a tool-part — stack Approve once / Always
+     allow / Reject full-width so each is comfortably tappable. */
+  .tool-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tool-actions .button {
+    width: 100%;
+    min-height: var(--tap-target);
+  }
+
+  /* The chat-level error retry/dismiss row also stacks. */
+  .button-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .button-row > .button {
+    width: 100%;
+    min-height: var(--tap-target);
+  }
+
+  /* Generic buttons inside grids — Pause/Resume/Brief/Archive in
+     the sub-agent detail panel, plus the sidebar Reconnect/Clear
+     row — always at least tap-target tall. */
+  .button {
+    min-height: var(--tap-target);
+  }
+
+  .button-compact {
+    min-height: 38px;
+  }
+
+  /* Single-column collapse of grid layouts inside the side panel. */
   .customization-grid {
     grid-template-columns: 1fr;
   }
@@ -984,5 +1138,374 @@ pre {
   .subagent-metadata,
   .subagent-templates {
     grid-template-columns: 1fr;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Tighter chat panel header on mobile so the message list gets
+     more of the viewport. */
+  .panel-header {
+    padding: 12px;
+  }
+
+  .panel-header p {
+    font-size: 0.92rem;
+  }
+
+  .message-list {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  /* Side panel as drawer: shorter height on phones so the chat is
+     the primary surface. */
+  .side-panel {
+    max-height: 70dvh;
+  }
+
+  /* SDK snippet inside HostedAgentPanel: smaller font + scroll. */
+  .sdk-snippet {
+    max-height: 140px;
+    font-size: 0.68rem;
+  }
+
+  .sdk-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .sdk-card .button {
+    width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------
+   Touch / no-hover devices — drop hover-only affordances so the
+   active styles aren't sticky after a tap.
+   --------------------------------------------------------------- */
+@media (hover: none) {
+  .subagent-template:hover {
+    border-color: var(--line);
+    background: rgba(255, 252, 245, 0.72);
+  }
+
+  /* The pointer cursor still makes sense, but suppress any colour
+     shifts on hover for native tap surfaces. */
+  .tool-group > summary:hover,
+  .tool-raw-details > summary:hover {
+    background: transparent;
+  }
+}
+
+/* ---------------------------------------------------------------
+   Motion preference — disable transitions and any future keyframe
+   animation so users with vestibular sensitivities aren't moved.
+   The voice console ring still updates (it uses inline transform)
+   but the easing collapses to an instant change.
+   --------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .persona-voice__push {
+    animation: none !important;
+  }
+}
+
+/* ===============================================================
+   Voice console — Persona shell push-to-talk surface.
+
+   The component (voice-console.tsx) renders a structured tree:
+     .persona-voice
+       .persona-voice__header
+         .persona-voice__status
+           .persona-voice__status-dot
+         .persona-voice__mode
+           .persona-voice__mode-btn[.is-active]
+       .persona-voice__interim          (optional)
+       .persona-voice__center
+         .persona-voice__push           (inline transform = audio level)
+       .persona-voice__controls
+         .persona-voice__control
+         .persona-voice__control--end
+         .persona-voice__control--mic-grant
+       .persona-voice__transcript       (ol of messages)
+         li[data-role]
+           .persona-voice__role
+           .persona-voice__content
+       .persona-voice__error            (optional)
+
+   The inline transform/box-shadow on .persona-voice__push provides
+   the audio-level scaling; we only style the base ring, glow, and
+   layout primitives.
+
+   Owned here because the sibling agent owns persona-pages.css.
+   =============================================================== */
+.persona-voice {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.persona-voice__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.persona-voice__status {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.persona-voice__status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px rgba(255, 252, 245, 0.7);
+}
+
+.persona-voice__mode {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(21, 23, 22, 0.04);
+}
+
+.persona-voice__mode-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.persona-voice__mode-btn.is-active {
+  border-color: var(--line-strong);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.persona-voice__interim {
+  padding: 10px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(45, 95, 154, 0.06);
+  color: var(--ink-soft);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.persona-voice__center {
+  display: grid;
+  place-items: center;
+  padding: 8px 0 12px;
+}
+
+.persona-voice__push {
+  display: inline-grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border: 1px solid var(--accent-strong);
+  border-radius: 50%;
+  background: var(--surface-strong);
+  color: var(--accent-strong);
+  font-size: 2rem;
+  /* Inline style supplies transform + transition for the audio level
+     ring. We provide a baseline glow that complements the inline
+     box-shadow without fighting it. */
+  box-shadow: 0 6px 22px rgba(184, 77, 18, 0.18);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.persona-voice__push:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.persona-voice__push[aria-pressed="true"] {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fffaf2;
+  box-shadow: 0 6px 22px rgba(180, 59, 53, 0.32);
+}
+
+.persona-voice__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.persona-voice__control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target);
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.persona-voice__control:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.persona-voice__control--end:not(:disabled) {
+  border-color: rgba(180, 59, 53, 0.32);
+  color: var(--red);
+  background: rgba(180, 59, 53, 0.08);
+}
+
+.persona-voice__control--mic-grant {
+  flex: 1 0 100%;
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: #fffaf2;
+}
+
+.persona-voice__transcript {
+  display: grid;
+  gap: 8px;
+  max-height: 50vh;
+  overflow: auto;
+  margin: 0;
+  padding: 0 4px;
+  list-style: none;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.persona-voice__transcript li {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  line-height: 1.4;
+}
+
+.persona-voice__transcript li[data-role="user"] {
+  border-color: rgba(223, 111, 33, 0.34);
+  background: #fff4e9;
+}
+
+.persona-voice__transcript li[data-role="assistant"] {
+  border-color: rgba(45, 95, 154, 0.22);
+  background: rgba(45, 95, 154, 0.05);
+}
+
+.persona-voice__role {
+  display: block;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.persona-voice__content {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.persona-voice__error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(180, 59, 53, 0.28);
+  border-radius: var(--radius-sm);
+  background: rgba(180, 59, 53, 0.08);
+  color: var(--red);
+  line-height: 1.4;
+}
+
+/* Voice console tablet/mobile adjustments — push button shrinks
+   to 80px on mobile per the spec, controls wrap, mic-grant button
+   keeps its full-width treatment. */
+@media (max-width: 620px) {
+  .persona-voice {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .persona-voice__header {
+    gap: 8px;
+  }
+
+  .persona-voice__mode {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .persona-voice__mode-btn {
+    flex: 1 1 0;
+  }
+
+  .persona-voice__push {
+    width: 80px;
+    height: 80px;
+    font-size: 1.7rem;
+  }
+
+  .persona-voice__controls {
+    gap: 6px;
+  }
+
+  .persona-voice__control {
+    flex: 1 1 calc(50% - 6px);
+    padding: 0 10px;
+  }
+
+  .persona-voice__transcript {
+    max-height: 45vh;
   }
 }

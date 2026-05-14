@@ -20,6 +20,9 @@
   --radius: 8px;
   --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
   --sans: "Aptos", "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+  --bp-desktop: 1100px;
+  --bp-tablet: 900px;
+  --bp-mobile: 620px;
 }
 
 * {
@@ -1880,6 +1883,7 @@ button {
 }
 
 .composer input {
+  min-height: 42px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   padding: 0 12px;
@@ -2159,6 +2163,7 @@ button {
 }
 
 .terminal-command input {
+  min-height: 42px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   padding: 0 12px;
@@ -2175,18 +2180,123 @@ button {
   padding-top: 0;
 }
 
-@media (max-width: 980px) {
-  .topbar {
-    grid-template-columns: 1fr;
+/* Learning workspace responsive scaffolding */
+.learning-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  padding: 0 20px 14px;
+}
+
+.learning-tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 20px 8px;
+}
+
+.learning-tab {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--ink-soft);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.learning-tab[aria-selected="true"] {
+  background: rgba(58, 91, 215, 0.1);
+  color: var(--accent);
+}
+
+.learning-list {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.learning-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface-strong);
+}
+
+.learning-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.learning-card-meta-row {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.learning-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.learning-confidence {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Chat composer becomes sticky at mobile to keep input in view. */
+.chat-shell .composer {
+  background: var(--surface);
+}
+
+/* === Responsive breakpoints (desktop 1100 / tablet 900 / mobile 620) === */
+
+/* Desktop -> tablet: compact chrome, side-by-side panels start to stack */
+@media (max-width: 1100px) {
+  .deploy-console {
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 14px;
   }
 
-  .nav-links {
-    justify-content: flex-start;
-    overflow-x: auto;
+  .deployment-workbench {
+    gap: 14px;
+  }
+
+  .workspace-page {
+    gap: 14px;
+  }
+}
+
+/* Tablet: nav links scroll, primary multi-column panels collapse */
+@media (max-width: 900px) {
+  .topbar {
+    grid-template-columns: auto 1fr;
+    gap: 14px;
   }
 
   .topbar-status {
     display: none;
+  }
+
+  .nav-links {
+    justify-content: flex-end;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .nav-links::-webkit-scrollbar {
+    height: 4px;
   }
 
   .deploy-hero,
@@ -2200,16 +2310,71 @@ button {
     min-height: auto;
     padding-top: 28px;
   }
+
+  /* ChatWorkspace / Terminal: aside metadata moves under the main panel */
+  .workspace-page > aside {
+    order: 2;
+  }
+
+  /* ChatWorkspace metadata sidebar hides at this breakpoint to give the
+     chat surface the full width; deploy/sync/terminal asides still stack. */
+  .chat-shell + aside {
+    display: none;
+  }
+
+  /* Personal agent forms */
+  .reset-grid,
+  .reset-agent-setup-grid,
+  .reset-prompt-grid,
+  .personal-agent-prompt-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-metadata {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Capability cards (Sync) */
+  .capability-lanes {
+    grid-template-columns: 1fr;
+  }
+
+  /* Deployment timeline: progress bar/percent stack */
+  .deploy-progress__overall {
+    padding: 14px;
+  }
 }
 
+/* Mobile: single column, larger tap targets, hide secondary metadata */
 @media (max-width: 620px) {
   .app-main {
     width: min(100% - 20px, 1480px);
-    padding-top: 16px;
+    padding: 16px 0 32px;
+  }
+
+  .topbar {
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    padding: 10px 14px;
+  }
+
+  .brand small {
+    display: none;
   }
 
   .nav-link {
+    min-height: 44px;
     padding: 0 10px;
+  }
+
+  /* Keep icons visible, hide text labels on the smallest breakpoint */
+  .nav-link > span {
+    display: none;
+  }
+
+  .nav-link[data-active="true"] > span {
+    /* Show the label for the active link so users know where they are */
+    display: inline;
   }
 
   .page-title {
@@ -2232,18 +2397,71 @@ button {
     border-top: 1px solid var(--line);
   }
 
+  /* Inline controls -> stack vertically */
   .composer,
   .terminal-command,
-  .inline-control {
+  .inline-control,
+  .token-control {
     grid-template-columns: 1fr;
   }
 
+  .composer-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .composer-actions .button {
+    flex: 1 1 auto;
+  }
+
+  /* Form inputs / buttons -> ≥ 44 px tall tap targets */
+  .field input,
+  .field select,
+  .field textarea,
+  .composer input,
+  .terminal-command input,
+  .domain-builder input {
+    min-height: 44px;
+    padding: 12px;
+  }
+
+  .button {
+    min-height: 44px;
+  }
+
+  .button-small {
+    min-height: 38px;
+  }
+
+  .button-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Token-creation button is full width on mobile */
+  .credential-guidance .button-small {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Surface header/body padding reduces */
+  .surface-header,
+  .surface-body,
+  .surface-footer {
+    padding: 14px;
+  }
+
+  .control-panel-header {
+    padding: 14px;
+  }
+
+  /* Other grids collapse */
   .automation-panel,
   .resource-row,
   .launch-grid,
-    .preset-picker,
-    .policy-choice-grid,
-    .agent-stack-summary,
+  .preset-picker,
+  .policy-choice-grid,
+  .agent-stack-summary,
   .setup-sequence,
   .feature-toggle-grid,
   .admin-metadata,
@@ -2266,5 +2484,158 @@ button {
   .admin-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  /* Domain builder collapses to stacked rows */
+  .domain-builder {
+    grid-template-columns: 1fr;
+  }
+
+  .domain-builder input {
+    border-top-right-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm);
+  }
+
+  .domain-builder span {
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    min-height: 38px;
+  }
+
+  /* DeploymentTimeline: progress bar + percent collapse to one stack */
+  .deploy-progress__bar {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .deploy-progress__percent {
+    text-align: left;
+    min-width: 0;
+  }
+
+  .deploy-progress__overall {
+    padding: 12px;
+  }
+
+  /* Resource chips already wrap (flex-wrap); pin spacing for legibility */
+  .resource-chips {
+    gap: 5px;
+  }
+
+  /* Stat cell metric font sizes */
+  .stat-cell strong,
+  .metric strong {
+    font-size: clamp(1.2rem, 5vw, 1.5rem);
+  }
+
+  /* Chat composer sticky to viewport bottom */
+  .chat-shell .composer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+  }
+
+  .chat-shell .message-list,
+  .terminal-shell .terminal-output {
+    min-height: 280px;
+    max-height: calc(100dvh - 280px);
+  }
+
+  /* Service rows / terminal rows: stack to grow comfortably */
+  .service-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  /* Token status row -> stack */
+  .token-status {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .verified-panel,
+  .check-row,
+  .policy-box,
+  .admin-state,
+  .admin-placeholder {
+    align-items: flex-start;
+  }
+
+  /* Resource row: split label/value vertically */
+  .resource-row {
+    gap: 6px;
+  }
+
+  /* Sync metrics & capability cards make sense at full width */
+  .sync-status-grid,
+  .sync-action-grid {
+    gap: 8px;
+  }
+
+  /* Hide non-essential capability metadata details below 620 (dl rows are dense) */
+  .capability-card dl div {
+    grid-template-columns: 70px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  /* Learning workspace */
+  .learning-summary-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    padding: 0 14px 12px;
+    gap: 8px;
+  }
+
+  .learning-tab-row {
+    padding: 0 14px 8px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .learning-tab {
+    flex: 0 0 auto;
+    min-height: 36px;
+    white-space: nowrap;
+  }
+
+  .learning-card-meta-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .learning-card-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .learning-card-actions .button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .learning-confidence {
+    margin-left: 0;
+  }
+
+  /* Reset zone padding */
+  .reset-zone {
+    padding: 12px;
+  }
+}
+
+/* Touch devices: drop hover-only affordances */
+@media (hover: none) {
+  .nav-link:hover,
+  .button:hover:not(:disabled),
+  .button-icon:hover,
+  .flow-card:hover,
+  .preset-option:hover,
+  .policy-option:hover {
+    transform: none;
+  }
+
+  .nav-link:hover {
+    background: transparent;
+    border-color: transparent;
   }
 }

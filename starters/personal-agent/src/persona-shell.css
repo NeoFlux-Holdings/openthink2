@@ -393,6 +393,15 @@
   font-size: 0.95rem;
 }
 
+/* === Responsive breakpoints ================================================
+ *
+ * --bp-desktop: 1100px — full three-column Persona shell
+ * --bp-tablet:   900px — sidebar collapses, canvas + thread feed share width,
+ *                       thumbnail strip compresses to horizontal scroll
+ * --bp-mobile:   620px — single column, larger tap targets (>= 44px),
+ *                       working-doc disclosure, recent-threads chip row
+ */
+
 @media (max-width: 1100px) {
   .persona-shell {
     grid-template-columns: var(--persona-sidebar) 1fr;
@@ -404,11 +413,186 @@
   }
 }
 
+@media (max-width: 900px) {
+  /* Compress canvas thumbnail strip: smaller thumbnails, no wrap.
+   * Strip already uses overflow-x: auto, so we just shrink the chips. */
+  .persona-shell__thumbnails {
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 8px 12px;
+  }
+  .persona-shell__thumbnail {
+    padding: 5px 8px;
+    font-size: 0.74rem;
+    gap: 4px;
+    max-width: 160px;
+  }
+  .persona-shell__thumbnail .persona-shell__thumbnail-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .persona-shell__thumbnail-kind {
+    font-size: 0.85rem;
+  }
+
+  /* Canvas header tightens; windowing buttons stay legible. */
+  .persona-shell__canvas-header {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  /* Working-doc and thread feed share width with canvas. */
+  .persona-shell__working-doc {
+    margin: 12px 14px 0;
+    padding: 8px 12px;
+  }
+  .persona-shell__thread-feed {
+    padding: 14px;
+  }
+  .persona-shell__composer {
+    padding: 10px 14px;
+  }
+}
+
 @media (max-width: 720px) {
   .persona-shell {
     grid-template-columns: 1fr;
   }
   .persona-shell__sidebar {
     display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  /* Single column, larger tap targets, secondary metadata hidden. */
+  .persona-shell {
+    grid-template-columns: 1fr;
+  }
+
+  /* Working-doc becomes a collapsible disclosure: it still appears in the
+   * DOM but renders compactly and hides the body until expanded via :focus
+   * or :hover. Authors may upgrade to a native <details>; until then this
+   * keeps the affordance compact without breaking aria attributes. */
+  .persona-shell__working-doc {
+    margin: 10px 12px 0;
+    padding: 8px 12px;
+    min-height: 44px;
+    cursor: pointer;
+  }
+  .persona-shell__working-doc strong {
+    display: block;
+  }
+  .persona-shell__working-doc strong::after {
+    content: " ▾";
+    color: var(--persona-muted);
+    font-weight: 400;
+  }
+  .persona-shell__working-doc span {
+    display: none;
+  }
+  .persona-shell__working-doc:hover span,
+  .persona-shell__working-doc:focus span,
+  .persona-shell__working-doc:focus-within span,
+  .persona-shell__working-doc[aria-expanded="true"] span {
+    display: block;
+  }
+
+  /* Thread feed and composer get more room and larger touch targets. */
+  .persona-shell__thread-feed {
+    padding: 12px 12px 16px;
+  }
+  .persona-shell__composer {
+    padding: 10px 12px;
+  }
+
+  /* Canvas header: tighten and keep the icon buttons readable >= 44px. */
+  .persona-shell__canvas-header {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .persona-shell__win-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 12px;
+    font-size: 1rem;
+  }
+  .persona-shell__canvas-body {
+    padding: 12px;
+  }
+
+  /* Artifact grid never fits two columns at this width; flatten always. */
+  .persona-shell__artifacts--grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Thumbnails: horizontal scroll, larger touch targets. */
+  .persona-shell__thumbnails {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .persona-shell__thumbnail {
+    min-height: 44px;
+    padding: 6px 10px;
+  }
+
+  /* Recent-threads list (visible when sidebar is unhidden at tablet width
+   * via a future toggle) becomes a horizontal scrolling chip row at mobile.
+   * Hide the timestamp meta to keep chips compact. */
+  .persona-shell__recent {
+    overflow: visible;
+  }
+  .persona-shell__recent ul {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .persona-shell__recent li {
+    flex: 0 0 auto;
+  }
+  .persona-shell__thread {
+    grid-template-columns: 12px auto;
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 1px solid var(--persona-line);
+    border-radius: 999px;
+    background: var(--persona-surface);
+    white-space: nowrap;
+  }
+  .persona-shell__thread .persona-shell__thread-title {
+    max-width: 160px;
+  }
+  .persona-shell__thread .persona-shell__thread-meta {
+    display: none;
+  }
+
+  /* Sidebar nav (when visible via slide-out) gets touch-friendly rows. */
+  .persona-shell__nav-item,
+  .persona-shell__settings {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+}
+
+/* === Coarse-pointer and reduced-motion safeguards ========================== */
+
+@media (hover: none) {
+  /* Show inline action chrome that would otherwise need hover. The working-
+   * doc disclosure body is always visible on coarse pointers. */
+  .persona-shell__working-doc span {
+    display: block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .persona-shell__nav-item,
+  .persona-artifact,
+  .persona-shell__thread,
+  .persona-shell__thumbnail,
+  .persona-shell__win-btn {
+    transition: none;
   }
 }

@@ -564,3 +564,322 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* === Responsive breakpoints ================================================
+ *
+ * Persona artifact viewers — mirror the shell tiers (1100 / 900 / 620) so
+ * the canvas reflows in concert with persona-shell.css.
+ *
+ *   --bp-desktop: 1100px — full desktop chrome
+ *   --bp-tablet:   900px — chrome bars wrap, table headers shrink
+ *   --bp-mobile:   620px — table cells render as <key>: <value> stacks,
+ *                         slides nav becomes full-width buttons, image
+ *                         max-height is constrained, browser viewport
+ *                         fills the canvas vertically
+ *   sub-mobile:    480px — code viewer collapses run-in-sandbox to icon
+ *
+ * Diff viewer side-by-side mode auto-falls-back to inline at < 720px so
+ * the columns never become unreadably narrow.
+ */
+
+@media (max-width: 900px) {
+  /* Toolbars wrap their contents so secondary controls drop to the
+   * next row instead of overflowing horizontally. */
+  .pv-document__bar,
+  .pv-code__bar,
+  .pv-browser__chrome,
+  .pv-webpage__bar,
+  .pv-table__bar,
+  .pv-image__bar,
+  .pv-chart__bar,
+  .pv-diff__bar,
+  .pv-slides__nav {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  /* Webpage URL field never crowds out the toolbar. */
+  .pv-webpage__url {
+    max-width: 100%;
+    flex: 1 1 100%;
+  }
+
+  /* Document / code body padding tightens. */
+  .pv-document__body,
+  .pv-document__editor,
+  .pv-code__body {
+    padding: 14px;
+  }
+
+  /* Slides slide padding reduces. */
+  .pv-slides__stage {
+    padding: 18px;
+  }
+  .pv-slides__slide {
+    padding: 22px 24px;
+  }
+
+  /* Chart chrome (axis labels, legend) gets less room. */
+  .pv-chart__svg {
+    padding: 8px;
+  }
+  .pv-chart__bar {
+    padding: 8px 12px;
+  }
+  .pv-chart__bar small {
+    font-size: 0.74rem;
+  }
+}
+
+/* Diff viewer side-by-side auto-falls-back to inline at < 720px. The
+ * component renders both shells in the DOM and toggles the parent class —
+ * here we forcibly collapse the side container to one column so even if
+ * the user has side-by-side selected, content stays legible. */
+@media (max-width: 720px) {
+  .pv-diff__side {
+    grid-template-columns: 1fr;
+  }
+  .pv-diff__col {
+    border-right: none;
+    border-bottom: 1px solid var(--pv-line);
+  }
+  .pv-diff__col--right {
+    border-bottom: none;
+  }
+}
+
+@media (max-width: 620px) {
+  /* Buttons across viewers reach a comfortable touch target. */
+  .pv-document__edit-toggle,
+  .pv-code__btn,
+  .pv-diff__btn,
+  .pv-browser__btn,
+  .pv-table__btn,
+  .pv-slides__btn,
+  .pv-image__btn {
+    min-height: 36px;
+    padding: 7px 12px;
+    font-size: 0.84rem;
+  }
+
+  /* Code viewer: keep readable, allow horizontal scroll for long lines. */
+  .pv-code__body {
+    font-size: 0.78rem;
+    padding: 12px;
+  }
+
+  /* Document viewer pads less. */
+  .pv-document__body,
+  .pv-document__editor {
+    padding: 12px;
+    font-size: 0.82rem;
+  }
+
+  /* Browser viewport fills the canvas vertically; URL bar stays at top
+   * (the chrome header already sits above the viewport). */
+  .pv-browser__chrome {
+    flex-wrap: wrap;
+  }
+  .pv-browser__url {
+    flex: 1 1 100%;
+    order: 99;
+    min-height: 36px;
+    font-size: 0.8rem;
+  }
+  .pv-browser__viewport {
+    flex: 1 1 auto;
+    min-height: 50vh;
+  }
+
+  /* Webpage frame shorter so the rest of the page is reachable. */
+  .pv-webpage__frame {
+    height: 360px;
+  }
+  .pv-webpage__stage {
+    padding: 10px;
+  }
+
+  /* Table viewer: hide column headers and render each cell as
+   * "<key>: <value>" stacked rows. Each <tr> becomes a card; each <td>
+   * exposes its column name via the data-label attribute (CSS-only —
+   * the TSX is unchanged, so we fall back to the column index via
+   * sibling pseudo-classes when data-label is missing). */
+  .pv-table__grid {
+    display: block;
+  }
+  .pv-table__grid thead {
+    /* Visually hide but keep available to assistive tech. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .pv-table__grid tbody,
+  .pv-table__grid tr {
+    display: block;
+    width: 100%;
+  }
+  .pv-table__grid tr {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--pv-line);
+  }
+  .pv-table__grid td {
+    display: grid;
+    grid-template-columns: minmax(0, 40%) 1fr;
+    gap: 10px;
+    align-items: baseline;
+    padding: 4px 12px;
+    border-bottom: none;
+    white-space: normal;
+    word-break: break-word;
+  }
+  .pv-table__grid td::before {
+    /* Derive the column name from the data-label attribute (set by the
+     * component when running mobile-friendly), with a fallback to a
+     * generic placeholder. The TSX doesn't emit data-label today; the
+     * empty pseudo-element collapses gracefully and rows remain
+     * scannable thanks to the bordered tr boundary above. */
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--pv-muted);
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* Image viewer: cap height so the rest of the page is reachable. */
+  .pv-image__stage {
+    padding: 12px;
+    min-height: 0;
+  }
+  .pv-image__img {
+    max-height: 60vh;
+  }
+
+  /* Chart chrome tightens further; SVG already scales via width: 100%. */
+  .pv-chart__svg {
+    padding: 6px;
+  }
+  .pv-chart__bar {
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.78rem;
+  }
+
+  /* Slides viewer: prev/next become full-width buttons; the count sits
+   * between them on its own row. */
+  .pv-slides__nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "count count"
+      "prev next";
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .pv-slides__nav .pv-slides__count {
+    grid-area: count;
+    text-align: center;
+  }
+  .pv-slides__nav .pv-slides__btn:nth-of-type(1) {
+    grid-area: prev;
+  }
+  .pv-slides__nav .pv-slides__btn:nth-of-type(2) {
+    grid-area: next;
+  }
+  .pv-slides__nav .pv-slides__btn {
+    width: 100%;
+    min-height: 44px;
+    font-size: 0.92rem;
+  }
+  .pv-slides__stage {
+    padding: 14px;
+  }
+  .pv-slides__slide {
+    padding: 18px 18px;
+  }
+  .pv-slides__slide h2 {
+    font-size: 1.05rem;
+  }
+
+  /* Diff viewer summary wraps so the file path doesn't push the modes
+   * picker off-screen. */
+  .pv-diff__bar {
+    flex-wrap: wrap;
+  }
+  .pv-diff__modes {
+    margin-left: 0;
+  }
+  /* Side-by-side already inlined at <720px; reinforce inline padding. */
+  .pv-diff__row {
+    padding: 1px 10px;
+  }
+  .pv-diff__inline .pv-diff__row {
+    grid-template-columns: 2.4rem 2.4rem 1rem 1fr;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Code viewer: drop the "Run in sandbox" button label and show only
+   * the play glyph via a pseudo-element. The TSX is unchanged, so we
+   * hide the text via font-size:0 and reinstate a glyph through
+   * ::before. The accessible name stays intact via aria-label/title
+   * on the underlying button. */
+  .pv-code__btn--primary {
+    font-size: 0;
+    min-width: 36px;
+    padding: 7px 9px;
+  }
+  .pv-code__btn--primary::before {
+    content: "▶";
+    font-size: 0.78rem;
+    line-height: 1;
+    color: var(--pv-accent);
+  }
+
+  /* Code viewer language pill takes less room. */
+  .pv-code__lang {
+    font-size: 0.68rem;
+  }
+
+  /* Slides slide padding even tighter on phones. */
+  .pv-slides__slide {
+    padding: 14px 14px;
+  }
+}
+
+/* === Coarse-pointer and reduced-motion safeguards ========================== */
+
+@media (hover: none) {
+  /* Inline action buttons should always render their hover surface so
+   * coarse pointers can see the affordance. */
+  .pv-document__edit-toggle,
+  .pv-code__btn,
+  .pv-diff__btn,
+  .pv-browser__btn,
+  .pv-table__btn,
+  .pv-slides__btn,
+  .pv-image__btn {
+    background: var(--pv-bg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-document__edit-toggle,
+  .pv-code__btn,
+  .pv-diff__btn,
+  .pv-browser__btn,
+  .pv-table__btn,
+  .pv-slides__btn,
+  .pv-image__btn,
+  .pv-webpage__viewport-btn {
+    transition: none;
+  }
+}

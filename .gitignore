@@ -12,3 +12,4 @@ coverage
 !.env.example
 
 .playwright-mcp
+.open-think-runtime-builds

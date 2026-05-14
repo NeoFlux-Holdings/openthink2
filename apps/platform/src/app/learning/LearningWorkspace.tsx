@@ -339,21 +339,14 @@ export function LearningWorkspace() {
           ) : null}
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-            gap: 12,
-            padding: "0 20px 14px"
-          }}
-        >
+        <div className="learning-summary-grid">
           <SummaryCard icon={Sparkles} label="Skills accepted" value={acceptedCount} />
           <SummaryCard icon={ListChecks} label="Pending" value={pendingCount} />
           <SummaryCard icon={PencilLine} label="Edited" value={editedCount} />
           <SummaryCard icon={X} label="Rejected" value={rejectedCount} />
         </div>
 
-        <div style={{ padding: "0 20px 8px", display: "flex", gap: 6, flexWrap: "wrap" }} role="tablist" aria-label="Filter by agent">
+        <div className="learning-tab-row" role="tablist" aria-label="Filter by agent">
           {(["all", ...(isFallback ? (fixtureAgents as readonly string[]) : availableAgents)] as string[]).map((id) => (
             <button
               key={id}
@@ -361,15 +354,7 @@ export function LearningWorkspace() {
               role="tab"
               aria-selected={agentFilter === id}
               onClick={() => setAgentFilter(id)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 999,
-                border: "1px solid var(--line)",
-                background: agentFilter === id ? "rgba(58, 91, 215, 0.1)" : "var(--surface-strong)",
-                color: agentFilter === id ? "var(--accent)" : "var(--ink-soft)",
-                fontSize: 13,
-                cursor: "pointer"
-              }}
+              className="learning-tab"
             >
               {id === "all" ? "All agents" : id}
             </button>
@@ -382,24 +367,19 @@ export function LearningWorkspace() {
               No suggestions for this agent yet. Run a few threads and check back.
             </div>
           ) : (
-            <ul style={{ display: "grid", gap: 12, padding: 0, margin: 0, listStyle: "none" }}>
+            <ul className="learning-list">
               {filtered.map((sug) => {
                 const decision = decisions[sug.id];
                 return (
                   <li
                     key={sug.id}
-                    style={{
-                      border: "1px solid var(--line)",
-                      borderRadius: 12,
-                      padding: 14,
-                      background: "var(--surface-strong)",
-                      opacity: decision ? 0.6 : 1
-                    }}
+                    className="learning-card"
+                    style={{ opacity: decision ? 0.6 : 1 }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div className="learning-card-header">
                       <KindBadge kind={sug.kind} />
                       <strong style={{ fontSize: 14 }}>{sug.summary}</strong>
-                      <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+                      <span className="learning-confidence">
                         {Math.round(sug.confidence * 100)}% confidence · {sug.createdAt}
                       </span>
                     </div>
@@ -409,20 +389,11 @@ export function LearningWorkspace() {
                     >
                       <Streamdown controls={false}>{sug.detail}</Streamdown>
                     </div>
-                    <div
-                      style={{
-                        marginTop: 10,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        flexWrap: "wrap",
-                        gap: 8
-                      }}
-                    >
+                    <div className="learning-card-meta-row">
                       <small style={{ color: "var(--muted)", fontSize: 12 }}>
                         {sug.agentName} · {sug.threadTitle}
                       </small>
-                      <div style={{ display: "flex", gap: 6 }}>
+                      <div className="learning-card-actions">
                         <button
                           type="button"
                           className="button"

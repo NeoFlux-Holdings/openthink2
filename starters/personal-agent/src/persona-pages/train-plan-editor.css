@@ -368,3 +368,194 @@
   font-size: 0.74rem;
   color: var(--persona-muted, #5e5e66);
 }
+
+/* === Responsive breakpoints ================================================
+ *
+ * Train-mode plan editor — three tiers in line with persona-shell.css.
+ *
+ *   --bp-desktop: 1100px — drag handle on the left, action buttons inline
+ *   --bp-tablet:   900px — header actions wrap, row padding compresses
+ *   --bp-mobile:   620px — drag handle moves to the right; inline edit
+ *                         input expands to 100% width; header action
+ *                         buttons (Reject / Next / Approve-all) stack
+ *                         vertically below the row
+ */
+
+@media (max-width: 900px) {
+  .persona-train {
+    padding: 18px 16px;
+    gap: 12px;
+  }
+
+  /* Header allows the actions to wrap below the title/mode if needed. */
+  .persona-train__header {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "title"
+      "mode"
+      "actions";
+    gap: 10px;
+  }
+  .persona-train__actions {
+    flex-wrap: wrap;
+  }
+
+  /* Slightly tighter row padding to keep the list scannable. */
+  .persona-train__row {
+    padding: 9px 10px;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 620px) {
+  .persona-train {
+    padding: 14px 12px;
+    border-radius: 10px;
+    gap: 10px;
+  }
+
+  /* Header on mobile: title and pill on one row, mode selector full
+   * width, action buttons stack vertically below. */
+  .persona-train__header {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "title"
+      "mode"
+      "actions";
+    gap: 8px;
+  }
+  .persona-train__title h1 {
+    font-size: 1rem;
+  }
+  .persona-train__mode {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .persona-train__mode-option {
+    flex: 1 1 0;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 0.86rem;
+  }
+  /* Action buttons stack vertically below the row. */
+  .persona-train__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+  .persona-train__btn {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 0.92rem;
+  }
+
+  /* Step row layout: drag handle moves to the right; index + status sit
+   * to the left of the body; body expands to 100%; delete tucks beside
+   * the handle on the right. Grid columns become:
+   *   [index] [status] [body 1fr] [delete] [handle] */
+  .persona-train__row {
+    grid-template-columns: auto auto 1fr auto auto;
+    grid-template-areas: "index status body delete handle";
+    gap: 8px;
+    padding: 10px 12px;
+    align-items: start;
+  }
+  .persona-train__handle {
+    grid-area: handle;
+    font-size: 1.1rem;
+    min-width: 32px;
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* Reframe as right-side affordance with a vertical-dots glyph;
+     * the existing aria label on the span stays unchanged. */
+    color: var(--persona-muted, #5e5e66);
+  }
+  .persona-train__index {
+    grid-area: index;
+  }
+  .persona-train__status {
+    grid-area: status;
+  }
+  .persona-train__body {
+    grid-area: body;
+    min-width: 0;
+  }
+  .persona-train__delete {
+    grid-area: delete;
+    min-width: 32px;
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Inline edit input fills the body cell width. */
+  .persona-train__title-input,
+  .persona-train__detail-input {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 0.94rem;
+  }
+  .persona-train__detail-input {
+    min-height: 56px;
+  }
+
+  /* Title and detail buttons get a comfortable tap area without growing
+   * the row in resting state. */
+  .persona-train__title-btn,
+  .persona-train__detail-btn {
+    min-height: 28px;
+    padding: 2px 0;
+  }
+
+  /* Add button stretches edge-to-edge on mobile. */
+  .persona-train__add {
+    justify-self: stretch;
+    width: 100%;
+    min-height: 44px;
+    text-align: center;
+    padding: 10px 14px;
+    font-size: 0.92rem;
+  }
+
+  /* Chips wrap; keep them tappable. */
+  .persona-train__chips {
+    gap: 6px;
+  }
+  .persona-train__chip {
+    font-size: 0.74rem;
+    padding: 2px 8px;
+    line-height: 1.5;
+  }
+}
+
+/* === Coarse-pointer and reduced-motion safeguards ========================== */
+
+@media (hover: none) {
+  /* Drag handle hover state is meaningless on touch; show grab cursor
+   * as a hint without animating. */
+  .persona-train__handle {
+    cursor: default;
+  }
+  /* Delete button is always visible on coarse pointers (no hover
+   * reveal). */
+  .persona-train__delete {
+    color: var(--persona-ink-soft, #2f2f37);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .persona-train__status--running .persona-train__dot {
+    animation: none;
+  }
+  .persona-train__btn,
+  .persona-train__mode-option,
+  .persona-train__add {
+    transition: none;
+  }
+}
