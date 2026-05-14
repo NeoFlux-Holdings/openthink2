@@ -454,6 +454,14 @@ export class PersonalChatAgent extends AIChatAgent<RuntimeEnv> {
 
     const stream = createUIMessageStream<UIMessage>({
       execute: async ({ writer }) => {
+        const workingDoc = this.deriveWorkingDoc();
+        if (workingDoc) {
+          writer.write({
+            type: "message-metadata",
+            messageMetadata: { workingDoc } as never
+          });
+        }
+
         const delayedFinishChunks: UIMessageChunk[] = [];
         let sawRenderableChunk = false;
         for await (const chunk of result.toUIMessageStream<UIMessage>({ sendReasoning: false })) {
@@ -485,6 +493,30 @@ export class PersonalChatAgent extends AIChatAgent<RuntimeEnv> {
     });
 
     return createUIMessageStreamResponse({ stream });
+  }
+
+  /**
+   * Compose a one-line "working doc" the Persona thread feed pins above
+   * the message stream. Today this is a deterministic, free derivation
+   * from the last user goal — no extra LLM call. The orchestrator
+   * runtime can later swap this for a model-generated rolling summary
+   * by overriding `deriveWorkingDoc()` in a subclass.
+   */
+  protected deriveWorkingDoc(): string {
+    const reversed = [...this.messages].reverse();
+    const lastUser = reversed.find((m) => m.role === "user");
+    if (!lastUser) return "";
+    const parts = (lastUser as { parts?: unknown[] }).parts ?? [];
+    const text = parts
+      .filter((part: unknown) =>
+        Boolean(part) && typeof part === "object" && (part as { type?: unknown }).type === "text"
+      )
+      .map((part) => (part as { text?: string }).text ?? "")
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!text) return "";
+    return text.length > 140 ? `${text.slice(0, 137)}…` : text;
   }
 
   private async ensureDefaultMcpServers(): Promise<void> {

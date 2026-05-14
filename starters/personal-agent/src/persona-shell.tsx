@@ -169,7 +169,7 @@ export function PersonaShell(props: PersonaShellProps) {
         </button>
       </aside>
 
-      <section className="persona-shell__thread">
+      <section className="persona-shell__center">
         {props.workingDoc && (
           <div className="persona-shell__working-doc" title="Agent's working doc">
             <strong>Agent's notes</strong>

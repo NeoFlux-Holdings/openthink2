@@ -179,7 +179,7 @@ export function PersonaShell(props: PersonaShellProps) {
         </button>
       </aside>
 
-      <section className="persona-shell__thread">
+      <section className="persona-shell__center">
         {props.workingDoc && (
           <div className="persona-shell__working-doc" title="Agent's working doc">
             <strong>Agent's notes</strong>
@@ -497,17 +497,22 @@ export const PERSONA_SHELL_CSS = `/*
 
 /* === Center column: thread feed ============================================ */
 
-.persona-shell__thread:has(> .persona-shell__working-doc) {
-  /* the thread feed column container — keep no extra rules here */
-}
-
-/* The actual center column. Selector chained with the column's wrapper. */
-.persona-shell > .persona-shell__thread {
+/* Renamed from \`.persona-shell > .persona-shell__thread\` because the sidebar's
+ * thread-button class also matched and applied its 3-column grid + button
+ * padding to the center column, squashing it to ~16 px wide. */
+.persona-shell__center {
   display: grid;
   grid-template-rows: auto 1fr auto;
+  grid-template-columns: 1fr;
   background: var(--persona-bg);
   border-right: 1px solid var(--persona-line);
   min-height: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  color: var(--persona-ink);
+  font: inherit;
+  text-align: left;
 }
 
 .persona-shell__working-doc {
