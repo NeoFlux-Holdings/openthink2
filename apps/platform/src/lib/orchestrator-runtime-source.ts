@@ -37,6 +37,11 @@ interface DoStorageLike {
   list<T = unknown>(options?: { prefix?: string }): Promise<Map<string, T>>;
 }
 
+import { Schema } from "effect";
+import type { Schema } from "effect";
+import { Data, Effect, Schema } from "effect";
+import type { ParseError } from "effect/ParseResult";
+import { Effect } from "effect";
 
 /**
  * Shared Durable Object storage shape used by every internal module.
@@ -1333,6 +1338,8 @@ function parseDecisionRequest(
   return { ok: true, value };
 }
 
+// === starters/personal-agent/src/workflows/index.ts ===
+
 // === starters/personal-agent/src/orchestrator/types.ts ===
 /**
  * Orchestrator & workspace types.
@@ -1930,5 +1937,724 @@ export function createDoSkillStore(storage: DoStorageLike): SkillStore {
       }
     }
   };
+}
+
+// === starters/personal-agent/src/workflows/ir.ts ===
+/**
+ * Workflow IR — the runtime-neutral intermediate representation that
+ * the JSX / function DSL compiles into.
+ *
+ * Nodes are tagged unions so a runtime can switch on \`kind\` and an
+ * interpreter can implement each operator without coupling to the
+ * authoring syntax (JSX, fluent builders, or hand-written IR).
+ */
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [k: string]: Json }
+  | Json[];
+
+export interface IRTask<TIn = unknown, TOut = unknown> {
+  kind: "task";
+  name: string;
+  /** Optional Effect Schema for the task's input/output. The runner
+   *  validates the resolved input *before* calling \`handler\` and the
+   *  produced output *before* persisting it. */
+  input?: Schema.Schema<TIn, unknown>;
+  output?: Schema.Schema<TOut, unknown>;
+  /** Pure handler; the runner is responsible for durability. */
+  handler: (input: TIn, ctx: TaskContext) => Promise<TOut>;
+  /** Per-task retry override (\`{ limit, backoff?: "exponential" | "linear" }\`). */
+  retry?: { limit: number; backoff?: "exponential" | "linear" };
+}
+
+export interface IRSequence {
+  kind: "sequence";
+  name?: string;
+  children: WorkflowNode[];
+}
+
+export interface IRParallel {
+  kind: "parallel";
+  name?: string;
+  children: WorkflowNode[];
+  /** Concurrency cap. Defaults to unbounded (Effect.all default). */
+  concurrency?: number;
+}
+
+export interface IRBranch {
+  kind: "branch";
+  name?: string;
+  /** Predicate is evaluated against the workflow scope on every run. */
+  predicate: (scope: WorkflowScope) => boolean;
+  whenTrue: WorkflowNode;
+  whenFalse?: WorkflowNode;
+}
+
+export interface IRRalph {
+  kind: "ralph";
+  name?: string;
+  /** Loop body — re-runs while \`condition\` returns true. */
+  body: WorkflowNode;
+  condition: (scope: WorkflowScope, iteration: number) => boolean;
+  maxIterations: number;
+}
+
+export interface IRWorkflow {
+  kind: "workflow";
+  name: string;
+  version: string;
+  input?: Schema.Schema<unknown, unknown>;
+  output?: Schema.Schema<unknown, unknown>;
+  body: WorkflowNode;
+}
+
+export type WorkflowNode =
+  | IRTask<unknown, unknown>
+  | IRSequence
+  | IRParallel
+  | IRBranch
+  | IRRalph;
+
+/**
+ * Per-task context handed to the handler. Carries the workflow's
+ * scope (so handlers can read earlier task outputs) plus durability
+ * hooks the runner injects.
+ */
+export interface TaskContext {
+  scope: WorkflowScope;
+  /** Persist a key/value pair that survives a workflow restart. */
+  persist: (key: string, value: Json) => Promise<void>;
+  /** Read previously-persisted value. */
+  recall: (key: string) => Promise<Json | undefined>;
+  /** Structured logger — routed to the workflow's run log. */
+  log: (level: "debug" | "info" | "warn" | "error", message: string, extra?: Json) => void;
+}
+
+/** Read-only view of the running workflow's named task outputs. */
+export interface WorkflowScope {
+  get<T = unknown>(taskName: string): T | undefined;
+  has(taskName: string): boolean;
+  /** Workflow input. */
+  input: unknown;
+  /** All outputs keyed by task name, for debugging / branching. */
+  outputs: Readonly<Record<string, unknown>>;
+}
+
+// === starters/personal-agent/src/workflows/dsl.ts ===
+/**
+ * Workflow DSL — author workflows two ways with the same IR output.
+ *
+ * Function API (recommended for tests + plain TS):
+ *
+ *   workflow("greet", { version: "1.0.0" },
+ *     sequence(
+ *       task("fetch-user", { handler: async (input) => ... }),
+ *       parallel(
+ *         task("score-a", { handler: ... }),
+ *         task("score-b", { handler: ... })
+ *       ),
+ *       branch(scope => scope.get("score-a")! > 0.5,
+ *         task("congratulate", { handler: ... }),
+ *         task("retry",        { handler: ... })
+ *       )
+ *     )
+ *   );
+ *
+ * JSX-compatible API (for tsx files using a @jsxImportSource pragma
+ * to bind to our \`h\` factory):
+ *
+ *   <Workflow name="greet" version="1.0.0">
+ *     <Sequence>
+ *       <Task name="fetch-user" handler={…} />
+ *       <Parallel>
+ *         <Task name="score-a" handler={…} />
+ *         <Task name="score-b" handler={…} />
+ *       </Parallel>
+ *     </Sequence>
+ *   </Workflow>
+ *
+ * Both produce the same IR; the runner doesn't care which path
+ * you used.
+ */
+
+// ----- function API --------------------------------------------------------
+
+export interface TaskOptions<TIn, TOut> {
+  input?: Schema.Schema<TIn, unknown>;
+  output?: Schema.Schema<TOut, unknown>;
+  handler: (input: TIn, ctx: TaskContext) => Promise<TOut>;
+  retry?: { limit: number; backoff?: "exponential" | "linear" };
+}
+
+export function task<TIn = unknown, TOut = unknown>(
+  name: string,
+  options: TaskOptions<TIn, TOut>
+): IRTask<unknown, unknown> {
+  // Erase the precise input/output generics at the boundary so the
+  // resulting node fits inside the WorkflowNode union without
+  // exactOptionalPropertyTypes variance complaints. \`as never\` then
+  // \`as IRTask<unknown, unknown>\` is intentional — TypeScript is
+  // strict here and Schema is invariant in its first parameter, so
+  // we accept the precise schema at the call site and store the
+  // erased form on the node.
+  const node: Record<string, unknown> = {
+    kind: "task",
+    name,
+    handler: options.handler
+  };
+  if (options.input) node.input = options.input;
+  if (options.output) node.output = options.output;
+  if (options.retry) node.retry = options.retry;
+  return node as unknown as IRTask<unknown, unknown>;
+}
+
+export function sequence(...children: WorkflowNode[]): IRSequence;
+export function sequence(opts: { name?: string }, ...children: WorkflowNode[]): IRSequence;
+export function sequence(
+  first?: WorkflowNode | { name?: string },
+  ...rest: WorkflowNode[]
+): IRSequence {
+  if (first && !("kind" in first)) {
+    const node: IRSequence = { kind: "sequence", children: rest };
+    if (first.name) node.name = first.name;
+    return node;
+  }
+  const children = first ? [first as WorkflowNode, ...rest] : rest;
+  return { kind: "sequence", children };
+}
+
+export function parallel(...children: WorkflowNode[]): IRParallel;
+export function parallel(
+  opts: { name?: string; concurrency?: number },
+  ...children: WorkflowNode[]
+): IRParallel;
+export function parallel(
+  first?: WorkflowNode | { name?: string; concurrency?: number },
+  ...rest: WorkflowNode[]
+): IRParallel {
+  if (first && !("kind" in first)) {
+    const node: IRParallel = { kind: "parallel", children: rest };
+    if (first.name) node.name = first.name;
+    if (first.concurrency) node.concurrency = first.concurrency;
+    return node;
+  }
+  const children = first ? [first as WorkflowNode, ...rest] : rest;
+  return { kind: "parallel", children };
+}
+
+export function branch(
+  predicate: (scope: WorkflowScope) => boolean,
+  whenTrue: WorkflowNode,
+  whenFalse?: WorkflowNode
+): IRBranch {
+  const node: IRBranch = { kind: "branch", predicate, whenTrue };
+  if (whenFalse) node.whenFalse = whenFalse;
+  return node;
+}
+
+export function ralph(input: {
+  name?: string;
+  body: WorkflowNode;
+  condition: (scope: WorkflowScope, iteration: number) => boolean;
+  maxIterations?: number;
+}): IRRalph {
+  const node: IRRalph = {
+    kind: "ralph",
+    body: input.body,
+    condition: input.condition,
+    maxIterations: input.maxIterations ?? 32
+  };
+  if (input.name) node.name = input.name;
+  return node;
+}
+
+export function workflow(
+  name: string,
+  options: {
+    version?: string;
+    input?: Schema.Schema<unknown, unknown>;
+    output?: Schema.Schema<unknown, unknown>;
+  } = {},
+  body: WorkflowNode
+): IRWorkflow {
+  const node: IRWorkflow = {
+    kind: "workflow",
+    name,
+    version: options.version ?? "1.0.0",
+    body
+  };
+  if (options.input) node.input = options.input;
+  if (options.output) node.output = options.output;
+  return node;
+}
+
+// ----- JSX-compatible h() factory ------------------------------------------
+
+/**
+ * JSX factory that produces our IR. Bind via per-file pragmas
+ * (\`@jsxRuntime classic\` + \`@jsx h\`) or set \`jsxFactory: "h"\` in
+ * tsconfig.json (we keep React for the rest of the UI — workflow
+ * files opt in per-file).
+ *
+ * Usage (pragmas omitted from the example to avoid nesting comments):
+ *
+ *   import { h, Workflow, Task, Sequence } from "./workflows";
+ *   const greet = (
+ *     <Workflow name="greet" version="1.0.0">
+ *       <Sequence>
+ *         <Task name="hello" handler={async () => "hi"} />
+ *       </Sequence>
+ *     </Workflow>
+ *   );
+ */
+// We deliberately type the h() factory loosely because each component
+// has a different props shape — the runtime safety comes from the
+// individual factory functions (Task, Workflow, etc).
+type LooseFactory = (props: never, ...children: unknown[]) => WorkflowNode | IRWorkflow;
+
+export function h(
+  type: LooseFactory | string,
+  props: Record<string, unknown> | null,
+  ...children: unknown[]
+): WorkflowNode | IRWorkflow {
+  if (typeof type !== "function") {
+    throw new Error(\`Workflow JSX: unknown element <\${String(type)}>\`);
+  }
+  const flat = flattenChildren(children);
+  return type({ ...(props ?? {}), children: flat } as never, ...flat);
+}
+
+function flattenChildren(children: unknown[]): WorkflowNode[] {
+  const out: WorkflowNode[] = [];
+  for (const child of children) {
+    if (child === null || child === undefined || child === false) continue;
+    if (Array.isArray(child)) {
+      out.push(...flattenChildren(child));
+    } else {
+      out.push(child as WorkflowNode);
+    }
+  }
+  return out;
+}
+
+interface JsxChildren {
+  children?: WorkflowNode | WorkflowNode[];
+}
+
+export function Task<TIn = unknown, TOut = unknown>(
+  props: TaskOptions<TIn, TOut> & { name: string }
+): IRTask<unknown, unknown> {
+  const { name, ...rest } = props;
+  return task(name, rest);
+}
+
+export function Sequence(props: { name?: string } & JsxChildren): IRSequence {
+  const opts: { name?: string } = {};
+  if (props.name) opts.name = props.name;
+  return sequence(opts, ...toArray(props.children));
+}
+
+export function Parallel(
+  props: { name?: string; concurrency?: number } & JsxChildren
+): IRParallel {
+  const opts: { name?: string; concurrency?: number } = {};
+  if (props.name) opts.name = props.name;
+  if (props.concurrency) opts.concurrency = props.concurrency;
+  return parallel(opts, ...toArray(props.children));
+}
+
+export function Branch(props: {
+  predicate: (scope: WorkflowScope) => boolean;
+  children: [WorkflowNode] | [WorkflowNode, WorkflowNode];
+}): IRBranch {
+  const [whenTrue, whenFalse] = toArray(props.children) as [WorkflowNode, WorkflowNode?];
+  return branch(props.predicate, whenTrue, whenFalse);
+}
+
+export function Ralph(props: {
+  name?: string;
+  condition: (scope: WorkflowScope, iteration: number) => boolean;
+  maxIterations?: number;
+  children: WorkflowNode;
+}): IRRalph {
+  const input: Parameters<typeof ralph>[0] = {
+    body: Array.isArray(props.children) ? props.children[0]! : props.children,
+    condition: props.condition
+  };
+  if (props.name) input.name = props.name;
+  if (props.maxIterations) input.maxIterations = props.maxIterations;
+  return ralph(input);
+}
+
+export function Workflow(
+  props: {
+    name: string;
+    version?: string;
+    input?: Schema.Schema<unknown, unknown>;
+    output?: Schema.Schema<unknown, unknown>;
+  } & JsxChildren
+): IRWorkflow {
+  const children = toArray(props.children);
+  if (children.length !== 1) {
+    throw new Error(\`<Workflow name="\${props.name}"> requires exactly one child node, got \${children.length}.\`);
+  }
+  const opts: Parameters<typeof workflow>[1] = {};
+  if (props.version) opts.version = props.version;
+  if (props.input) opts.input = props.input;
+  if (props.output) opts.output = props.output;
+  return workflow(props.name, opts, children[0]!);
+}
+
+function toArray<T>(v: T | T[] | undefined): T[] {
+  if (v === undefined) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+// === starters/personal-agent/src/workflows/interpreter.ts ===
+/**
+ * Effect-based interpreter for the workflow IR.
+ *
+ * Each IR node maps to an Effect:
+ *   - task      → Effect.tryPromise of the handler, with Schema-validated
+ *                 input/output and optional retry schedule.
+ *   - sequence  → Effect.gen, yields each child in order, threads the
+ *                 scope forward.
+ *   - parallel  → Effect.all with optional concurrency cap.
+ *   - branch    → Match.value over the predicate result.
+ *   - ralph     → Effect.iterate over the body up to maxIterations.
+ *
+ * The interpreter is durability-agnostic: the runner (see runner.ts)
+ * injects a TaskContext whose \`persist\` / \`recall\` are wired to
+ * Cloudflare Workflows' \`step.do()\` checkpoints so a crash mid-run
+ * resumes from the last completed task.
+ */
+
+export class WorkflowTaskError extends Data.TaggedError("WorkflowTaskError")<{
+  readonly taskName: string;
+  readonly cause: unknown;
+  readonly message: string;
+}> {}
+
+export class WorkflowSchemaError extends Data.TaggedError("WorkflowSchemaError")<{
+  readonly taskName: string;
+  readonly stage: "input" | "output";
+  readonly cause: ParseError;
+}> {}
+
+export interface InterpreterDeps {
+  buildTaskContext: (task: IRTask, scope: WorkflowScope) => TaskContext;
+  /** Optional callback fired around every task — useful for the runner
+   *  to insert CF Workflows \`step.do\` boundaries. */
+  withStep?: <A, E>(
+    task: IRTask,
+    body: Effect.Effect<A, E>
+  ) => Effect.Effect<A, E>;
+}
+
+interface MutableScope {
+  input: unknown;
+  outputs: Record<string, unknown>;
+}
+
+function freezeScope(state: MutableScope): WorkflowScope {
+  return {
+    input: state.input,
+    outputs: state.outputs,
+    has(taskName) {
+      return Object.prototype.hasOwnProperty.call(state.outputs, taskName);
+    },
+    get(taskName) {
+      return state.outputs[taskName] as never;
+    }
+  };
+}
+
+export function interpret(
+  workflow: IRWorkflow,
+  input: unknown,
+  deps: InterpreterDeps
+): Effect.Effect<Record<string, unknown>, WorkflowTaskError | WorkflowSchemaError> {
+  const state: MutableScope = { input, outputs: {} };
+
+  return Effect.gen(function* () {
+    if (workflow.input) {
+      yield* decode(workflow.input, input, workflow.name, "input");
+    }
+    yield* interpretNode(workflow.body, state, deps);
+    if (workflow.output) {
+      yield* decode(workflow.output, state.outputs, workflow.name, "output");
+    }
+    return state.outputs;
+  });
+}
+
+function interpretNode(
+  node: WorkflowNode,
+  state: MutableScope,
+  deps: InterpreterDeps
+): Effect.Effect<void, WorkflowTaskError | WorkflowSchemaError> {
+  switch (node.kind) {
+    case "task":
+      return interpretTask(node, state, deps);
+    case "sequence":
+      return interpretSequence(node, state, deps);
+    case "parallel":
+      return interpretParallel(node, state, deps);
+    case "branch":
+      return interpretBranch(node, state, deps);
+    case "ralph":
+      return interpretRalph(node, state, deps);
+  }
+}
+
+function interpretTask(
+  node: IRTask,
+  state: MutableScope,
+  deps: InterpreterDeps
+): Effect.Effect<void, WorkflowTaskError | WorkflowSchemaError> {
+  const body = Effect.gen(function* () {
+    const scope = freezeScope(state);
+    let resolvedInput: unknown = state.input;
+    if (node.input) {
+      resolvedInput = yield* decode(node.input, state.input, node.name, "input");
+    }
+    const ctx = deps.buildTaskContext(node, scope);
+    const raw = yield* Effect.tryPromise({
+      try: () => (node.handler as (i: unknown, c: TaskContext) => Promise<unknown>)(resolvedInput, ctx),
+      catch: (error) =>
+        new WorkflowTaskError({
+          taskName: node.name,
+          cause: error,
+          message: error instanceof Error ? error.message : String(error)
+        })
+    });
+    const validated = node.output
+      ? yield* decode(node.output, raw, node.name, "output")
+      : raw;
+    state.outputs[node.name] = validated;
+  });
+  return deps.withStep ? deps.withStep(node, body) : body;
+}
+
+function interpretSequence(
+  node: IRSequence,
+  state: MutableScope,
+  deps: InterpreterDeps
+): Effect.Effect<void, WorkflowTaskError | WorkflowSchemaError> {
+  return Effect.gen(function* () {
+    for (const child of node.children) {
+      yield* interpretNode(child, state, deps);
+    }
+  });
+}
+
+function interpretParallel(
+  node: IRParallel,
+  state: MutableScope,
+  deps: InterpreterDeps
+): Effect.Effect<void, WorkflowTaskError | WorkflowSchemaError> {
+  // Each parallel branch sees the *current* outputs but writes back
+  // into a per-branch copy that's merged at join time. This keeps
+  // the IR semantics deterministic even when branches finish out of
+  // order.
+  const snapshot = { ...state.outputs };
+  const children = node.children.map((child) => {
+    const local: MutableScope = { input: state.input, outputs: { ...snapshot } };
+    return interpretNode(child, local, deps).pipe(
+      Effect.map(() => local.outputs)
+    );
+  });
+
+  const options: { concurrency?: number } = {};
+  if (typeof node.concurrency === "number") options.concurrency = node.concurrency;
+
+  return Effect.gen(function* () {
+    const results = yield* Effect.all(children, options);
+    for (const localOutputs of results) {
+      for (const [name, value] of Object.entries(localOutputs)) {
+        if (!Object.prototype.hasOwnProperty.call(snapshot, name)) {
+          state.outputs[name] = value;
+        }
+      }
+    }
+  });
+}
+
+function interpretBranch(
+  node: IRBranch,
+  state: MutableScope,
+  deps: InterpreterDeps
+): Effect.Effect<void, WorkflowTaskError | WorkflowSchemaError> {
+  return Effect.gen(function* () {
+    const took = node.predicate(freezeScope(state));
+    if (took) {
+      yield* interpretNode(node.whenTrue, state, deps);
+    } else if (node.whenFalse) {
+      yield* interpretNode(node.whenFalse, state, deps);
+    }
+  });
+}
+
+function interpretRalph(
+  node: IRRalph,
+  state: MutableScope,
+  deps: InterpreterDeps
+): Effect.Effect<void, WorkflowTaskError | WorkflowSchemaError> {
+  return Effect.gen(function* () {
+    let iteration = 0;
+    while (iteration < node.maxIterations && node.condition(freezeScope(state), iteration)) {
+      yield* interpretNode(node.body, state, deps);
+      iteration += 1;
+    }
+  });
+}
+
+function decode<A>(
+  schema: Schema.Schema<A, unknown>,
+  value: unknown,
+  taskName: string,
+  stage: "input" | "output"
+): Effect.Effect<A, WorkflowSchemaError> {
+  return Effect.mapError(Schema.decodeUnknown(schema)(value), (cause) =>
+    new WorkflowSchemaError({ taskName, stage, cause })
+  );
+}
+
+// === starters/personal-agent/src/workflows/runner.ts ===
+/**
+ * Runners for the workflow IR.
+ *
+ *  - runWorkflow(workflow, input)        — pure Effect runner, in-memory.
+ *                                          Use for tests + same-isolate work.
+ *  - runWorkflowOnCloudflare(...)        — adapts each \`<Task>\` to a
+ *                                          Cloudflare Workflow \`step.do()\`
+ *                                          checkpoint so a crash mid-run
+ *                                          resumes from the last completed
+ *                                          task. Reference:
+ *                                          https://developers.cloudflare.com/workflows/
+ */
+
+interface MemoryStore {
+  data: Map<string, Json>;
+}
+
+function buildMemoryTaskContext(
+  _task: IRTask,
+  scope: WorkflowScope,
+  store: MemoryStore,
+  logger?: TaskContext["log"]
+): TaskContext {
+  return {
+    scope,
+    async persist(key, value) {
+      store.data.set(key, value);
+    },
+    async recall(key) {
+      return store.data.get(key);
+    },
+    log: logger ?? (() => {})
+  };
+}
+
+export interface RunWorkflowOptions {
+  /** Custom logger; default is console-quiet. */
+  logger?: TaskContext["log"];
+}
+
+export async function runWorkflow(
+  workflow: IRWorkflow,
+  input: unknown,
+  options: RunWorkflowOptions = {}
+): Promise<Record<string, unknown>> {
+  const store: MemoryStore = { data: new Map() };
+  const eff = interpret(workflow, input, {
+    buildTaskContext: (task, scope) => buildMemoryTaskContext(task, scope, store, options.logger)
+  });
+  return Effect.runPromise(eff);
+}
+
+// ----- Cloudflare Workflows runner -----------------------------------------
+
+/**
+ * Minimal shape of the Cloudflare Workflows \`WorkflowStep\` we depend
+ * on. Kept structural so the runner can be tested without the real
+ * binding and so SDK minor-version drift doesn't break the surface.
+ */
+export interface CloudflareWorkflowStep {
+  do<T>(
+    name: string,
+    options:
+      | { retries?: { limit?: number; backoff?: "exponential" | "linear" } }
+      | (() => T | Promise<T>),
+    handler?: () => T | Promise<T>
+  ): Promise<T>;
+}
+
+interface CloudflareDurableStore {
+  /** Workflow-level persistence — survives restarts. CF Workflows
+   *  itself does this for \`step.do\` returns; we hand the same store
+   *  to tasks for ad-hoc key/value needs. */
+  put(key: string, value: Json): Promise<void>;
+  get(key: string): Promise<Json | undefined>;
+}
+
+export interface RunOnCloudflareInput {
+  workflow: IRWorkflow;
+  input: unknown;
+  step: CloudflareWorkflowStep;
+  store?: CloudflareDurableStore;
+  logger?: TaskContext["log"];
+}
+
+export async function runWorkflowOnCloudflare(
+  input: RunOnCloudflareInput
+): Promise<Record<string, unknown>> {
+  const memory: MemoryStore = { data: new Map() };
+  const store: CloudflareDurableStore = input.store ?? {
+    async put(key, value) {
+      memory.data.set(key, value);
+    },
+    async get(key) {
+      return memory.data.get(key);
+    }
+  };
+
+  const eff = interpret(input.workflow, input.input, {
+    buildTaskContext: (task, scope): TaskContext => ({
+      scope,
+      persist: (key, value) => store.put(\`\${task.name}:\${key}\`, value),
+      recall: (key) => store.get(\`\${task.name}:\${key}\`),
+      log: input.logger ?? (() => {})
+    }),
+    withStep: (task, body) => wrapStep(task, body, input.step)
+  });
+
+  return Effect.runPromise(eff);
+}
+
+function wrapStep<A, E>(
+  task: IRTask,
+  body: Effect.Effect<A, E>,
+  step: CloudflareWorkflowStep
+): Effect.Effect<A, E> {
+  return Effect.tryPromise({
+    try: async () => {
+      const handler = async () => Effect.runPromise(body as Effect.Effect<A, never>);
+      const retryOption = task.retry
+        ? task.retry.backoff
+          ? { retries: { limit: task.retry.limit, backoff: task.retry.backoff } }
+          : { retries: { limit: task.retry.limit } }
+        : undefined;
+      if (retryOption) {
+        return (await step.do(task.name, retryOption, handler)) as A;
+      }
+      return (await step.do(task.name, handler)) as A;
+    },
+    catch: (cause) => cause as E
+  });
 }
 `;

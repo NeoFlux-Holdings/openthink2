@@ -26,6 +26,7 @@ export default defineConfig({
         items: [
           { text: "Orchestrator & Sub-agents", link: "/guide/orchestrator-and-subagents" },
           { text: "Skills, Approval, Code-mode", link: "/guide/skills-and-approval" },
+          { text: "Workflows (JSX + Effect)", link: "/guide/workflows" },
           { text: "Persona Shell (UI)", link: "/guide/persona-shell" },
           { text: "Smithery (MCP registry)", link: "/guide/smithery" },
           { text: "Hosted Cloud Agent", link: "/guide/hosted-cloud-agent" },

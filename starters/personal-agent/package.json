@@ -24,6 +24,7 @@
     "@open-think/terminal": "workspace:*",
     "agents": "^0.12.4",
     "ai": "^6.0.174",
+    "effect": "^3.21.2",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "streamdown": "^2.5.0",
