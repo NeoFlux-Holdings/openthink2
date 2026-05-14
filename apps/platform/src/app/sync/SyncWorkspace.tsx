@@ -1,0 +1,1006 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Cloud,
+  GitBranch,
+  GitCommitHorizontal,
+  GitPullRequestArrow,
+  KeyRound,
+  ListRestart,
+  RefreshCw,
+  RotateCcw,
+  Rocket,
+  Settings2,
+  ShieldCheck
+} from "lucide-react";
+import type { AutoSyncConfig, SyncAction, SyncResult, SyncStatus } from "@open-think/sync";
+import type {
+  DeploymentResetRequest,
+  DeploymentResetMode,
+  DeploymentUpdateAction,
+  DeploymentUpdateSummary
+} from "@/lib/deployment-update";
+import {
+  PersonalAgentConfigurator,
+  createPersonalAgentConfiguratorState,
+  personalAgentConfigFromConfiguratorState,
+  personalAgentConfiguratorIssue
+} from "@/app/deploy/_components/PersonalAgentConfigurator";
+
+const manualActions: Array<{
+  action: SyncAction;
+  label: string;
+  icon: typeof GitBranch;
+}> = [
+  { action: "pull", label: "Pull Remote", icon: GitPullRequestArrow },
+  { action: "commit", label: "Commit Draft", icon: GitCommitHorizontal },
+  { action: "push", label: "Push Artifact", icon: Cloud },
+  { action: "deploy", label: "Deploy Artifact", icon: Rocket },
+  { action: "reconcile", label: "Reconcile", icon: RefreshCw }
+];
+
+const UPDATE_TOKEN_STORAGE_KEY = "open-think.cf-api-token";
+
+type TokenStatus =
+  | { state: "empty"; message: string }
+  | { state: "saved"; message: string }
+  | { state: "checking"; message: string }
+  | { state: "verified"; message: string }
+  | { state: "warning"; message: string }
+  | { state: "error"; message: string };
+
+type TokenVerificationPayload = {
+  inspection?: {
+    userEmail?: string;
+    accounts?: Array<{ id: string; name?: string }>;
+    defaultAccountId?: string;
+    defaultAccessEmail?: string;
+  };
+  permissionIssue?: {
+    error: string;
+    cloudflare?: {
+      requiredPermission?: string;
+    };
+  };
+  error?: string;
+};
+
+export function SyncWorkspace() {
+  const [status, setStatus] = useState<SyncStatus | null>(null);
+  const [result, setResult] = useState<SyncResult | null>(null);
+  const [deploymentStatus, setDeploymentStatus] = useState<SyncStatus | null>(null);
+  const [deploymentResult, setDeploymentResult] = useState<SyncResult | null>(null);
+  const [deploymentUpdates, setDeploymentUpdates] = useState<DeploymentUpdateSummary[]>([]);
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState("");
+  const [updateToken, setUpdateToken] = useState("");
+  const [resetMode, setResetMode] = useState<DeploymentResetMode>("source");
+  const [resetConfirmation, setResetConfirmation] = useState("");
+  const [resetReconfigurePersonalAgent, setResetReconfigurePersonalAgent] = useState(false);
+  const [resetPersonalAgentConfig, setResetPersonalAgentConfig] = useState(() =>
+    createPersonalAgentConfiguratorState()
+  );
+  const [tokenStatus, setTokenStatus] = useState<TokenStatus>({
+    state: "empty",
+    message: "Paste a Cloudflare API token to unlock updates for deployed agents."
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isWorking, setIsWorking] = useState<SyncAction | "auto" | null>(null);
+  const [isDeploymentWorking, setIsDeploymentWorking] = useState<
+    DeploymentUpdateAction | "auto" | null
+  >(null);
+  const [error, setError] = useState<string | null>(null);
+  const [deploymentError, setDeploymentError] = useState<string | null>(null);
+
+  const headline = useMemo(() => {
+    if (!status) return "Loading sync state";
+    if (status.sourceOfTruth === "cloudflare-artifacts") {
+      return "Cloudflare Artifacts draft sync is configured";
+    }
+    return "Optional draft workspace is local-only";
+  }, [status]);
+
+  const artifactActionsEnabled = status?.sourceOfTruth === "cloudflare-artifacts";
+
+  const selectedDeployment = useMemo(
+    () =>
+      deploymentUpdates.find((deployment) => deployment.deploymentId === selectedDeploymentId) ??
+      deploymentUpdates[0] ??
+      null,
+    [deploymentUpdates, selectedDeploymentId]
+  );
+
+  const selectedAutoUpdate = selectedDeployment?.metadata?.autoUpdate ?? {
+    enabled: false,
+    direction: "bidirectional" as const,
+    intervalSeconds: 300
+  };
+  const currentPersonalAgent = selectedDeployment?.personalAgent;
+  const resetPersonalAgentIssue =
+    resetMode === "factory-settings" && resetReconfigurePersonalAgent
+      ? personalAgentConfiguratorIssue(
+          resetPersonalAgentConfig,
+          "Custom .brain reset setup needs a stack name or a soul prompt."
+        )
+      : null;
+  const resetPhrase = selectedDeployment ? `RESET ${selectedDeployment.deploymentId}` : "RESET";
+  const resetReady = Boolean(
+    selectedDeployment && resetConfirmation.trim() === resetPhrase && !resetPersonalAgentIssue
+  );
+
+  useEffect(() => {
+    setResetConfirmation("");
+    setResetMode("source");
+    setResetReconfigurePersonalAgent(false);
+    setResetPersonalAgentConfig(createPersonalAgentConfiguratorState());
+  }, [selectedDeploymentId]);
+
+  useEffect(() => {
+    void refresh();
+    const savedToken = readStoredUpdateToken();
+    if (savedToken) {
+      setUpdateToken(savedToken);
+      setTokenStatus({
+        state: "saved",
+        message: "Token loaded from this browser. Verifying it now..."
+      });
+    } else {
+      void loadDeploymentUpdates();
+    }
+  }, []);
+
+  useEffect(() => {
+    const token = updateToken.trim();
+    if (!token) {
+      storeUpdateToken("");
+      setTokenStatus({
+        state: "empty",
+        message: "Paste a Cloudflare API token to unlock updates for deployed agents."
+      });
+      return;
+    }
+
+    storeUpdateToken(token);
+    setTokenStatus((current) =>
+      current.state === "verified" || current.state === "warning"
+        ? {
+            state: "saved",
+            message: "Token changed and saved locally. Verify it before updating a Worker."
+          }
+        : current
+    );
+
+    const timeout = window.setTimeout(() => {
+      if (token.length >= 20) {
+        void verifyUpdateToken(token, { refreshTarget: true, silent: true });
+      }
+    }, 850);
+
+    return () => window.clearTimeout(timeout);
+  }, [updateToken]);
+
+  async function refresh() {
+    setError(null);
+    setIsLoading(true);
+    try {
+      const response = await fetch("/api/sync/status");
+      if (!response.ok) throw new Error("Sync status failed.");
+      const payload = (await response.json()) as { status: SyncStatus };
+      setStatus(payload.status);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Sync status failed.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function runManual(action: SyncAction) {
+    setError(null);
+    setIsWorking(action);
+    try {
+      const response = await fetch("/api/sync/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          message: "Update open-think artifact"
+        })
+      });
+      const payload = (await response.json()) as {
+        result?: SyncResult;
+        error?: string;
+      };
+      if (!response.ok || !payload.result) {
+        throw new Error(payload.error ?? "Sync action failed.");
+      }
+      setResult(payload.result);
+      setStatus(payload.result.status);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Sync action failed.");
+    } finally {
+      setIsWorking(null);
+    }
+  }
+
+  async function updateAuto(config: Partial<AutoSyncConfig>) {
+    setError(null);
+    setIsWorking("auto");
+    try {
+      const response = await fetch("/api/sync/auto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config)
+      });
+      const payload = (await response.json()) as {
+        status?: SyncStatus;
+        error?: string;
+      };
+      if (!response.ok || !payload.status) {
+        throw new Error(payload.error ?? "Auto sync update failed.");
+      }
+      setStatus(payload.status);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Auto sync update failed.");
+    } finally {
+      setIsWorking(null);
+    }
+  }
+
+  async function loadDeploymentUpdates(token = updateToken): Promise<number | null> {
+    setDeploymentError(null);
+    try {
+      const headers: HeadersInit = {};
+      const trimmedToken = token.trim();
+      if (trimmedToken) headers["x-open-think-cf-api-token"] = trimmedToken;
+      const response = await fetch("/api/deployment/update", { headers });
+      const payload = (await response.json()) as {
+        deployments?: DeploymentUpdateSummary[];
+        error?: string;
+      };
+      if (!response.ok || !payload.deployments) {
+        throw new Error(payload.error ?? "Deployment update status failed.");
+      }
+      setDeploymentUpdates(payload.deployments);
+      setSelectedDeploymentId((current) => current || payload.deployments?.[0]?.deploymentId || "");
+      return payload.deployments.length;
+    } catch (caught) {
+      setDeploymentError(
+        caught instanceof Error ? caught.message : "Deployment update status failed."
+      );
+      return null;
+    }
+  }
+
+  async function verifyUpdateToken(
+    token = updateToken,
+    options: { refreshTarget?: boolean; silent?: boolean } = {}
+  ) {
+    const trimmedToken = token.trim();
+    if (!trimmedToken) {
+      setTokenStatus({
+        state: "error",
+        message: "Paste a Cloudflare API token first."
+      });
+      return;
+    }
+
+    if (!options.silent) setDeploymentError(null);
+    setTokenStatus({
+      state: "checking",
+      message: "Verifying token with Cloudflare..."
+    });
+
+    try {
+      const response = await fetch("/api/deployment/verify-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cfApiToken: trimmedToken })
+      });
+      const payload = (await response.json()) as TokenVerificationPayload;
+      if (!response.ok || !payload.inspection) {
+        throw new Error(payload.error ?? "Token verification failed.");
+      }
+
+      storeUpdateToken(trimmedToken);
+      const account =
+        payload.inspection.accounts?.find(
+          (item) => item.id === payload.inspection?.defaultAccountId
+        ) ?? payload.inspection.accounts?.[0];
+      const accountLabel = account
+        ? `${account.name ?? "Cloudflare account"} (${maskCloudflareId(account.id)})`
+        : "Cloudflare account";
+      const email = payload.inspection.defaultAccessEmail ?? payload.inspection.userEmail;
+
+      const refreshedCount = options.refreshTarget ? await loadDeploymentUpdates(trimmedToken) : null;
+      const refreshMessage =
+        refreshedCount === null
+          ? "Token verified; target refresh needs attention."
+          : refreshedCount > 0
+            ? `Target refreshed: ${refreshedCount} deployment${refreshedCount === 1 ? "" : "s"} available.`
+            : "Target refreshed, but no OpenThink deployments were found in this Cloudflare account.";
+
+      if (payload.permissionIssue) {
+        setTokenStatus({
+          state: "warning",
+          message: `${accountLabel} verified${
+            email ? ` for ${email}` : ""
+          }, but this token is missing ${
+            payload.permissionIssue.cloudflare?.requiredPermission ?? "a required permission"
+          }. ${refreshMessage}`
+        });
+      } else {
+        setTokenStatus({
+          state: "verified",
+          message: `${accountLabel} verified${email ? ` for ${email}` : ""}. ${refreshMessage}`
+        });
+      }
+    } catch (caught) {
+      setTokenStatus({
+        state: "error",
+        message: caught instanceof Error ? caught.message : "Token verification failed."
+      });
+    }
+  }
+
+  function handleUpdateTokenChange(value: string) {
+    setDeploymentError(null);
+    setUpdateToken(value);
+  }
+
+  function clearUpdateToken() {
+    setUpdateToken("");
+    storeUpdateToken("");
+    setTokenStatus({
+      state: "empty",
+      message: "Paste a Cloudflare API token to unlock updates for deployed agents."
+    });
+  }
+
+  async function runDeploymentUpdate(
+    action: DeploymentUpdateAction,
+    autoUpdate?: Partial<AutoSyncConfig>,
+    reset?: DeploymentResetRequest
+  ) {
+    if (!selectedDeployment) return;
+    if (!selectedDeployment.canUpdateWithoutToken && !updateToken.trim()) {
+      setDeploymentError(
+        "Paste and verify a Cloudflare API token first. This platform only stores a fingerprint after launch."
+      );
+      return;
+    }
+
+    setDeploymentError(null);
+    setIsDeploymentWorking(action);
+    try {
+      const response = await fetch("/api/deployment/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deploymentId: selectedDeployment.deploymentId,
+          action,
+          ...(updateToken.trim() ? { cfApiToken: updateToken.trim() } : {}),
+          ...(autoUpdate ? { autoUpdate } : {}),
+          ...(reset ? { reset } : {})
+        })
+      });
+      const payload = (await response.json()) as {
+        deployment?: DeploymentUpdateSummary;
+        status?: SyncStatus;
+        result?: SyncResult;
+        error?: string;
+      };
+      if (!response.ok || !payload.deployment || !payload.status) {
+        throw new Error(payload.error ?? "Deployment update failed.");
+      }
+      setDeploymentStatus(payload.status);
+      if (payload.result) setDeploymentResult(payload.result);
+      setDeploymentUpdates((deployments) =>
+        deployments.map((deployment) =>
+          deployment.deploymentId === payload.deployment?.deploymentId
+            ? payload.deployment
+            : deployment
+        )
+      );
+      if (action === "reset") setResetConfirmation("");
+    } catch (caught) {
+      setDeploymentError(caught instanceof Error ? caught.message : "Deployment update failed.");
+    } finally {
+      setIsDeploymentWorking(null);
+    }
+  }
+
+  function buildResetPersonalAgentConfig(): NonNullable<DeploymentResetRequest["personalAgent"]> {
+    return personalAgentConfigFromConfiguratorState(resetPersonalAgentConfig, {
+      enabled: true
+    });
+  }
+
+  return (
+    <section className="workspace-page" aria-label="Repository sync workspace">
+      <div className="sync-main-column">
+        <div className="surface sync-shell">
+          <div className="surface-header">
+            <div className="page-kicker">Optional Artifacts</div>
+            <h1>{headline}</h1>
+            <p>
+              This is only for the advanced draft-workspace loop. Deployed-agent updates use
+              the GitHub upstream panel below.
+            </p>
+          </div>
+          <div className="surface-body">
+            {error ? <p className="notice">{error}</p> : null}
+            <div className="sync-status-grid" aria-busy={isLoading}>
+              <SyncMetric label="Source" value={status?.sourceOfTruth ?? "loading"} />
+              <SyncMetric label="Branch" value={status?.branch ?? "loading"} />
+              <SyncMetric label="Drift" value={status?.drift ?? "loading"} />
+              <SyncMetric
+                label="Auto Sync"
+                value={status?.autoSync.enabled ? "enabled" : "disabled"}
+              />
+            </div>
+            <div className="resource-plan">
+              {[
+                ["Local head", status?.localHead],
+                ["Remote head", status?.remoteHead],
+                ["Deployed head", status?.deployedHead],
+                ["Remote", status?.remoteUrl]
+              ].map(([label, value]) => (
+                <div className="resource-row" key={label}>
+                  <span>
+                    <strong>{label}</strong>
+                  </span>
+                  <code>{value ?? "not set"}</code>
+                </div>
+              ))}
+            </div>
+            {status?.missing.length ? (
+              <p className="notice">Missing: {status.missing.join(", ")}</p>
+            ) : null}
+            <WarningList warnings={status?.warnings} />
+            {!artifactActionsEnabled ? (
+              <p className="automation-note">
+                Cloudflare Artifacts Git is not configured. This is fine for normal agent updates.
+              </p>
+            ) : null}
+            {result ? (
+              <p className="success-box">
+                {result.message}
+                {result.commitSha ? <code> {result.commitSha}</code> : null}
+              </p>
+            ) : null}
+          </div>
+          <div className="surface-footer sync-action-grid">
+            {manualActions.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  className="button"
+                  disabled={isWorking !== null || !artifactActionsEnabled}
+                  key={item.action}
+                  type="button"
+                  onClick={() => void runManual(item.action)}
+                >
+                  <Icon size={16} aria-hidden="true" />
+                  {isWorking === item.action ? "Working" : item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="surface">
+          <div className="surface-header">
+            <div className="page-kicker">Deployed Agent</div>
+            <h2>Update target</h2>
+            <p>Manual and cron updates use GitHub as upstream, then upload the generated Worker through Cloudflare.</p>
+          </div>
+          <div className="surface-body">
+            {deploymentError ? <p className="notice">{deploymentError}</p> : null}
+            <div className="form-grid">
+              <div className="field token-first-field">
+                <label htmlFor="deployment-update-token">Cloudflare API token</label>
+                <div className="inline-control token-control">
+                  <input
+                    id="deployment-update-token"
+                    type="password"
+                    value={updateToken}
+                    placeholder={
+                      selectedDeployment?.canUpdateWithoutToken
+                        ? "Configured token available"
+                        : "Paste token to update deployed agents"
+                    }
+                    onChange={(event) => handleUpdateTokenChange(event.target.value)}
+                    onBlur={() =>
+                      updateToken.trim()
+                        ? void verifyUpdateToken(updateToken, { refreshTarget: true })
+                        : undefined
+                    }
+                  />
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={!updateToken.trim() || tokenStatus.state === "checking"}
+                    onClick={() => void verifyUpdateToken(updateToken, { refreshTarget: true })}
+                  >
+                    <ShieldCheck size={16} aria-hidden="true" />
+                    {tokenStatus.state === "checking" ? "Checking" : "Verify"}
+                  </button>
+                </div>
+                <span className="field-hint">
+                  {selectedDeployment?.canUpdateWithoutToken
+                    ? `Using ${selectedDeployment.credentialSource}. You can still paste a token to override it for this update.`
+                    : "Stored only in this browser for update actions; raw user tokens are not stored by the platform after launch."}
+                </span>
+                <div className="token-status" data-state={tokenStatus.state}>
+                  <span>{tokenStatus.message}</span>
+                  {updateToken.trim() ? (
+                    <button type="button" onClick={clearUpdateToken}>
+                      Clear saved token
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="field">
+                <label htmlFor="deployment-update-target">Deployment</label>
+                <select
+                  id="deployment-update-target"
+                  value={selectedDeployment?.deploymentId ?? ""}
+                  onChange={(event) => setSelectedDeploymentId(event.target.value)}
+                >
+                  {deploymentUpdates.length ? (
+                    deploymentUpdates.map((deployment) => (
+                      <option value={deployment.deploymentId} key={deployment.deploymentId}>
+                        {deployment.agentName} - {deployment.deploymentId}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No deployments</option>
+                  )}
+                </select>
+              </div>
+            </div>
+            <div className="resource-plan">
+              {[
+                ["Script", selectedDeployment?.target?.scriptName],
+                ["Account", selectedDeployment?.target?.accountId],
+                ["Agent URL", selectedDeployment?.agentUrl],
+                ["Auto updates", selectedAutoUpdate.enabled ? "enabled" : "disabled"]
+              ].map(([label, value]) => (
+                <div className="resource-row" key={label}>
+                  <span>
+                    <strong>{label}</strong>
+                  </span>
+                  <code>{value ?? "not set"}</code>
+                </div>
+              ))}
+            </div>
+            {selectedDeployment ? (
+              <div className="capability-lanes" aria-label="Agent update capability lanes">
+                <div className="capability-card" data-state="ready">
+                  <div>
+                    <span className="capability-kicker">Works now</span>
+                    <h3>GitHub upstream updates</h3>
+                    <p>{selectedDeployment.workspace.basicUpdates.description}</p>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Repo</dt>
+                      <dd>{selectedDeployment.workspace.basicUpdates.repository}</dd>
+                    </div>
+                    <div>
+                      <dt>Branch</dt>
+                      <dd>{selectedDeployment.workspace.basicUpdates.branch}</dd>
+                    </div>
+                  </dl>
+                </div>
+                <div
+                  className="capability-card"
+                  data-state={
+                    selectedDeployment.workspace.artifacts.status === "configured"
+                      ? "ready"
+                      : "upgrade"
+                  }
+                >
+                  <div>
+                    <span className="capability-kicker">
+                      {selectedDeployment.workspace.artifacts.status === "configured"
+                        ? "Self-edit workspace"
+                        : "Add later"}
+                    </span>
+                    <h3>Artifacts + Sandbox lane</h3>
+                    <p>{selectedDeployment.workspace.artifacts.description}</p>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Artifacts</dt>
+                      <dd>
+                        {selectedDeployment.workspace.artifacts.remote
+                          ? `${selectedDeployment.workspace.artifacts.namespace}/${selectedDeployment.workspace.artifacts.repo}`
+                          : "not attached"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Sandbox</dt>
+                      <dd>{selectedDeployment.workspace.sandbox.status.replace(/-/g, " ")}</dd>
+                    </div>
+                    <div>
+                      <dt>Token</dt>
+                      <dd>
+                        {selectedDeployment.workspace.artifacts.tokenSecretConfigured
+                          ? "stored as Worker secret"
+                          : "created on enable"}
+                      </dd>
+                    </div>
+                  </dl>
+                  {selectedDeployment.workspace.artifacts.status !== "configured" ? (
+                    <p className="capability-note">
+                      This can stay off for accounts without paid workspace capabilities. Enable it
+                      later after the account has Artifacts/Sandbox access.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            <WarningList warnings={selectedDeployment?.warnings} />
+            {selectedDeployment?.metadata?.lastError ? (
+              <p className="notice">{selectedDeployment.metadata.lastError}</p>
+            ) : null}
+            <div className="resource-plan">
+              {[
+                ["Update source", deploymentStatus?.sourceOfTruth ?? "github-upstream"],
+                ["GitHub remote", deploymentStatus?.remoteUrl],
+                ["Remote SHA", deploymentStatus?.remoteHead],
+                ["Deployed SHA", deploymentStatus?.deployedHead],
+                ["Drift", deploymentStatus?.drift]
+              ].map(([label, value]) => (
+                <div className="resource-row" key={label}>
+                  <span>
+                    <strong>{label}</strong>
+                  </span>
+                  <code>{value ?? "not checked"}</code>
+                </div>
+              ))}
+            </div>
+            <WarningList warnings={deploymentStatus?.warnings} />
+            {deploymentResult ? (
+              <p className="success-box">
+                {deploymentResult.message}
+                {deploymentResult.commitSha ? <code> {deploymentResult.commitSha}</code> : null}
+              </p>
+            ) : null}
+            {selectedDeployment ? (
+              <div className="reset-zone">
+                <div className="reset-zone-header">
+                  <AlertTriangle size={18} aria-hidden="true" />
+                  <div>
+                    <h3>Reset controls</h3>
+                    <p>
+                      Restore this Worker from GitHub, or remove custom non-secret settings and
+                      return to the baseline OpenThink runtime. Encrypted Worker secrets are
+                      preserved; factory reset can also re-seed a new brain.
+                    </p>
+                  </div>
+                </div>
+                <div className="current-brain-summary">
+                  <div className="current-brain-summary-top">
+                    <span>
+                      <strong>
+                        {currentPersonalAgent?.enabled
+                          ? currentPersonalAgent.label
+                          : "Baseline OpenThink runtime"}
+                      </strong>
+                      <small>
+                        {currentPersonalAgent?.enabled
+                          ? `${currentPersonalAgent.brain} on ${currentPersonalAgent.stack}`
+                          : "No personal-agent brain/stack profile is currently configured."}
+                      </small>
+                    </span>
+                    <span data-state={currentPersonalAgent?.enabled ? "configured" : "empty"}>
+                      {currentPersonalAgent?.enabled ? "Configured" : "Not configured"}
+                    </span>
+                  </div>
+                  {currentPersonalAgent?.enabled ? (
+                    <div className="current-brain-badges">
+                      <span>{currentPersonalAgent.setupStatus.replace(/-/g, " ")}</span>
+                      <span>{(currentPersonalAgent.toolApprovalPolicy ?? "auto").replace(/-/g, " ")}</span>
+                      <span>{currentPersonalAgent.enabledFeatures.length} features</span>
+                      <span>
+                        {currentPersonalAgent.soulPromptConfigured
+                          ? "Soul prompt set"
+                          : "No soul prompt"}
+                      </span>
+                      <span>
+                        {currentPersonalAgent.launchBriefConfigured
+                          ? "Launch brief set"
+                          : "No launch brief"}
+                      </span>
+                    </div>
+                  ) : null}
+                  <p>
+                    Source restore preserves this profile. Factory reset clears it unless re-setup
+                    is enabled below.
+                  </p>
+                </div>
+                <div className="form-grid reset-grid">
+                  <div className="field">
+                    <label htmlFor="deployment-reset-mode">Reset mode</label>
+                    <select
+                      id="deployment-reset-mode"
+                      value={resetMode}
+                      onChange={(event) =>
+                        setResetMode(event.target.value as DeploymentResetMode)
+                      }
+                    >
+                      <option value="source">Restore source from GitHub</option>
+                      <option value="factory-settings">Factory reset settings</option>
+                    </select>
+                    <span className="field-hint">
+                      {resetMode === "source"
+                        ? "Reuploads the generated Worker from upstream and keeps current workspace and brain metadata."
+                        : "Reuploads upstream source, disables auto updates, removes workspace metadata, and drops custom non-secret bindings unless re-setup is enabled."}
+                    </span>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="deployment-reset-confirmation">
+                      Type <code>{resetPhrase}</code>
+                    </label>
+                    <input
+                      id="deployment-reset-confirmation"
+                      value={resetConfirmation}
+                      placeholder={resetPhrase}
+                      onChange={(event) => setResetConfirmation(event.target.value)}
+                    />
+                    <span className="field-hint">
+                      This confirmation is checked by the API before any Worker upload happens.
+                    </span>
+                  </div>
+                </div>
+                {resetMode === "factory-settings" ? (
+                  <div className="reset-personal-agent">
+                    <label className="check-row reset-agent-toggle">
+                      <input
+                        type="checkbox"
+                        checked={resetReconfigurePersonalAgent}
+                        onChange={(event) =>
+                          setResetReconfigurePersonalAgent(event.target.checked)
+                        }
+                      />
+                      <span>
+                        <strong>Re-setup personal agent brain after reset</strong>
+                        <small>
+                          Factory reset clears the stored brain/stack config unless this is on.
+                          Source restore keeps the current brain.
+                        </small>
+                      </span>
+                    </label>
+
+                    {resetReconfigurePersonalAgent ? (
+                      <>
+                        <PersonalAgentConfigurator
+                          state={resetPersonalAgentConfig}
+                          onChange={setResetPersonalAgentConfig}
+                          idPrefix="reset-personal-agent"
+                          presetInput="select"
+                          presetLabel="New brain/stack preset"
+                          presetHint="The reset uploads this config, writes the public runtime binding, and re-runs the setup bootstrap when D1 is available."
+                          featureSummaryLimit="all"
+                          summaryClassName="reset-agent-summary"
+                          customNameLabel="Custom stack name"
+                          soulPromptLabel="Soul prompt"
+                          launchBriefLabel="Launch brief"
+                          soulPromptHint="Stored as a Worker secret when provided and redacted from public status."
+                          launchBriefHint="Stored separately from the soul prompt and seeded into D1 memory during setup."
+                          externalEndpointHint="Optional. If blank, the agent records the external bridge as a setup follow-up."
+                          advancedHint="Choose exactly which personal-agent features stay on."
+                        />
+                        {resetPersonalAgentIssue ? (
+                          <p className="notice">{resetPersonalAgentIssue}</p>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+                <button
+                  className="button button-danger"
+                  type="button"
+                  disabled={!resetReady || isDeploymentWorking !== null}
+                  onClick={() => {
+                    const reset: DeploymentResetRequest = {
+                      mode: resetMode,
+                      confirmation: resetConfirmation.trim()
+                    };
+                    if (resetMode === "factory-settings" && resetReconfigurePersonalAgent) {
+                      reset.personalAgent = buildResetPersonalAgentConfig();
+                    }
+                    void runDeploymentUpdate("reset", undefined, reset);
+                  }}
+                >
+                  <RotateCcw size={16} aria-hidden="true" />
+                  {isDeploymentWorking === "reset" ? "Resetting" : "Run reset"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <div className="surface-footer sync-action-grid">
+            <button
+              className="button"
+              type="button"
+              disabled={!selectedDeployment || isDeploymentWorking !== null}
+              onClick={() => void runDeploymentUpdate("pull")}
+            >
+              <GitPullRequestArrow size={16} aria-hidden="true" />
+              {isDeploymentWorking === "pull" ? "Working" : "Check GitHub"}
+            </button>
+            <button
+              className="button button-primary"
+              type="button"
+              disabled={!selectedDeployment || isDeploymentWorking !== null}
+              onClick={() => void runDeploymentUpdate("deploy")}
+            >
+              <Rocket size={16} aria-hidden="true" />
+              {isDeploymentWorking === "deploy" ? "Working" : "Update Worker"}
+            </button>
+            <button
+              className="button"
+              type="button"
+              disabled={!selectedDeployment || isDeploymentWorking !== null}
+              onClick={() => void runDeploymentUpdate("reconcile")}
+            >
+              <ListRestart size={16} aria-hidden="true" />
+              {isDeploymentWorking === "reconcile" ? "Working" : "Reconcile"}
+            </button>
+            <button
+              className="button"
+              type="button"
+              disabled={!selectedDeployment || isDeploymentWorking !== null}
+              onClick={() => void runDeploymentUpdate("enable-workspace")}
+            >
+              <Settings2 size={16} aria-hidden="true" />
+              {isDeploymentWorking === "enable-workspace"
+                ? "Working"
+                : selectedDeployment?.workspace.artifacts.status === "configured"
+                  ? "Refresh Workspace"
+                  : "Enable Workspace"}
+            </button>
+            <button
+              className="button"
+              type="button"
+              disabled={!selectedDeployment || isDeploymentWorking !== null}
+              onClick={() =>
+                void runDeploymentUpdate("status", {
+                  ...selectedAutoUpdate,
+                  enabled: !selectedAutoUpdate.enabled
+                })
+              }
+            >
+              <RefreshCw size={16} aria-hidden="true" />
+              {selectedAutoUpdate.enabled ? "Disable Auto" : "Enable Auto"}
+            </button>
+            <button
+              className="button"
+              type="button"
+              disabled={isDeploymentWorking !== null}
+              onClick={() => void loadDeploymentUpdates()}
+            >
+              <KeyRound size={16} aria-hidden="true" />
+              Refresh Target
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <aside className="surface">
+        <div className="surface-header">
+          <div className="page-kicker">Automation</div>
+          <h2>Draft sync policy</h2>
+          <p>These controls apply only to the optional Cloudflare Artifacts workspace.</p>
+        </div>
+        <div className="surface-body">
+          <div className="terminal-row">
+            <Settings2 size={17} color="var(--accent-strong)" aria-hidden="true" />
+            <span>
+              <strong>Direction</strong>
+              <br />
+              <span className="field-hint">{status?.autoSync.direction ?? "bidirectional"}</span>
+            </span>
+          </div>
+          <div className="terminal-row">
+            <RefreshCw size={17} color="var(--accent-strong)" aria-hidden="true" />
+            <span>
+              <strong>Interval</strong>
+              <br />
+              <span className="field-hint">
+                {status?.autoSync.intervalSeconds ?? 300} seconds
+              </span>
+            </span>
+          </div>
+          <div className="terminal-row">
+            <CheckCircle2 size={17} color="var(--accent-strong)" aria-hidden="true" />
+            <span>
+              <strong>Dirty files</strong>
+              <br />
+              <span className="field-hint">
+                {status?.dirtyFiles.length ? status.dirtyFiles.join(", ") : "none"}
+              </span>
+            </span>
+          </div>
+          <div className="form-grid">
+            <button
+              className="button button-primary"
+              type="button"
+              disabled={isWorking !== null || !artifactActionsEnabled}
+              onClick={() =>
+                void updateAuto({
+                  enabled: !(status?.autoSync.enabled ?? false)
+                })
+              }
+            >
+              <RefreshCw size={16} aria-hidden="true" />
+              {status?.autoSync.enabled ? "Disable Auto Sync" : "Enable Auto Sync"}
+            </button>
+            <button
+              className="button"
+              type="button"
+              disabled={isWorking !== null}
+              onClick={() => void refresh()}
+            >
+              <RefreshCw size={16} aria-hidden="true" />
+              Refresh Status
+            </button>
+          </div>
+        </div>
+      </aside>
+    </section>
+  );
+}
+
+function SyncMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="metric">
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function WarningList({ warnings }: { warnings: string[] | undefined }) {
+  if (!warnings?.length) return null;
+  return (
+    <>
+      {warnings.map((warning, index) => (
+        <p className="automation-note" key={`${index}-${warning}`}>
+          {warning}
+        </p>
+      ))}
+    </>
+  );
+}
+
+function readStoredUpdateToken(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(UPDATE_TOKEN_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function storeUpdateToken(token: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) {
+      window.localStorage.setItem(UPDATE_TOKEN_STORAGE_KEY, token);
+    } else {
+      window.localStorage.removeItem(UPDATE_TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    // Browsers can block localStorage in hardened privacy modes.
+  }
+}
+
+function maskCloudflareId(id: string): string {
+  if (id.length <= 12) return id;
+  return `${id.slice(0, 6)}...${id.slice(-6)}`;
+}
