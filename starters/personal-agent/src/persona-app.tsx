@@ -102,6 +102,30 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
 
   const workingDoc = useMemo(() => extractWorkingDoc(messages), [messages]);
 
+  // Stuck-state watchdog: when the agent has been "busy" for a long
+  // time without any new content, surface a recovery banner so the
+  // user can stop or retry. Resets every time the message count or
+  // content fingerprint changes.
+  const [stuck, setStuck] = useState(false);
+  const contentSignature = useMemo(() => {
+    let total = 0;
+    for (const message of messages) {
+      const parts = (message as { parts?: unknown[] }).parts ?? [];
+      for (const part of parts) {
+        if (part && typeof part === "object" && "text" in part && typeof (part as { text: unknown }).text === "string") {
+          total += ((part as { text: string }).text ?? "").length;
+        }
+      }
+    }
+    return `${messages.length}:${total}`;
+  }, [messages]);
+  useEffect(() => {
+    setStuck(false);
+    if (!busy) return;
+    const timer = setTimeout(() => setStuck(true), 30_000);
+    return () => clearTimeout(timer);
+  }, [busy, contentSignature]);
+
   const submitNewTask = useCallback(
     (prompt: string) => {
       if (!prompt.trim() || busy) return;
@@ -228,6 +252,16 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
   return (
     <>
       <PersonaShell {...shellProps} />
+      {stuck && busy ? (
+        <div className="persona-app__stuck" role="status">
+          <span>
+            The agent has been working on this for a while. Stop and try again, or wait it out.
+          </span>
+          <button type="button" onClick={() => void stop()}>
+            Stop
+          </button>
+        </div>
+      ) : null}
       {error ? (
         <div className="persona-app__error" role="alert">
           <span>{error.message || String(error)}</span>

@@ -280,7 +280,11 @@ function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbl
     .filter(Boolean)
     .join("\n\n");
 
-  const statusLine = busy ? deriveStatusLine(toolParts) : undefined;
+  const statusLine = busy
+    ? deriveStatusLine(toolParts) ?? (role === "assistant" ? "Thinking…" : undefined)
+    : undefined;
+  const hasAnyVisible = text.trim().length > 0 || toolParts.length > 0 || reasoningText.trim().length > 0;
+  const isEmptyAssistant = role === "assistant" && !busy && !hasAnyVisible;
 
   return (
     <article className={`persona-bubble persona-bubble--${role}`} data-role={role}>
@@ -288,7 +292,14 @@ function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbl
 
       {statusLine ? (
         <p className="persona-bubble__status" aria-live="polite">
+          <span className="persona-bubble__status-dot" aria-hidden="true" />
           {statusLine}
+        </p>
+      ) : null}
+
+      {isEmptyAssistant ? (
+        <p className="persona-bubble__empty">
+          No response — try resending the question or asking it a different way.
         </p>
       ) : null}
 
@@ -421,10 +432,23 @@ function deriveStatusLine(toolParts: UIMessage["parts"]): string | undefined {
         : lower.includes("read") || lower.includes("get")
           ? "Reading"
           : "Running";
-    if (inputText) return `${verb} ${inputText}…`;
+    const cleaned = inputText ? formatStatusFragment(inputText) : undefined;
+    if (cleaned) return `${verb} ${cleaned}…`;
     return `${verb} ${toolLabel(toolName)}…`;
   }
   return undefined;
+}
+
+/**
+ * Tools sometimes carry multi-line code snippets in their input (e.g.
+ * `query: "async () => { spec.paths[...]; return {...}; }"`). Render
+ * those as a single short line so the status line stays a status line
+ * instead of dumping the snippet into the message body.
+ */
+function formatStatusFragment(input: string): string {
+  const collapsed = input.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= 80) return collapsed;
+  return `${collapsed.slice(0, 77)}…`;
 }
 
 function extractFirstStringField(value: Record<string, unknown>): string | undefined {
