@@ -114,10 +114,12 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
   const connected = agent.readyState === WebSocket.OPEN;
   const busy = status === "submitted" || status === "streaming" || isStreaming || isServerStreaming;
 
-  // Promote to thread view once a user message lands so the home screen
-  // exits even before the assistant replies.
+  // Promote to thread view once a user message lands, but ONLY when
+  // the user is currently on the home screen. Otherwise the effect
+  // would clobber any sidebar navigation (Library / Skills / Settings /
+  // …) the moment the messages array updated.
   useEffect(() => {
-    if (view === "thread") return;
+    if (view !== "home") return;
     if (messages.some((message) => message.role === "user" && (message.parts ?? []).length > 0)) {
       setView("thread");
     }

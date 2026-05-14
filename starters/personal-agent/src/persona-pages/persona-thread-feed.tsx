@@ -305,22 +305,24 @@ function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbl
 
       {toolParts.length > 0 ? (
         <ul className="persona-bubble__tools" aria-label="Tool activity">
-          {toolParts.map((part, index) => {
-            const toolName = getToolName(part) ?? "tool";
-            const callId = getToolCallId(part);
+          {collapseToolParts(toolParts).map((entry, index) => {
+            const { name, callId, count } = entry;
             return (
-              <li key={`${toolName}-${index}`}>
+              <li key={`${name}-${index}`}>
                 <button
                   type="button"
                   className="persona-bubble__tool-chip"
-                  onClick={() => onOpenArtifact?.(toolName, callId)}
-                  title={toolName}
+                  onClick={() => onOpenArtifact?.(name, callId)}
+                  title={count > 1 ? `${name} (×${count})` : name}
                 >
                   <span className="persona-bubble__tool-emoji" aria-hidden="true">
-                    {toolEmoji(toolName)}
+                    {toolEmoji(name)}
                   </span>
-                  <span className="persona-bubble__tool-label">{toolLabel(toolName)}</span>
-                  <ToolStateBadge part={part} />
+                  <span className="persona-bubble__tool-label">
+                    {toolLabel(name)}
+                    {count > 1 ? ` ×${count}` : ""}
+                  </span>
+                  <ToolStateBadge part={entry.part} />
                 </button>
               </li>
             );
@@ -396,20 +398,63 @@ function toolEmoji(name: string): string {
   return "🔧";
 }
 
+/**
+ * Collapse a run of identical adjacent tool calls into a single chip
+ * with a count. The agent often makes 4–5 searches in a row; rendering
+ * each as its own pill is noisy.
+ */
+interface CollapsedToolEntry {
+  name: string;
+  callId: string | undefined;
+  count: number;
+  part: UIMessage["parts"][number];
+}
+
+function collapseToolParts(parts: UIMessage["parts"]): CollapsedToolEntry[] {
+  const out: CollapsedToolEntry[] = [];
+  for (const part of parts) {
+    if (!isToolUIPart(part)) continue;
+    const name = getToolName(part) ?? "tool";
+    const callId = getToolCallId(part);
+    const last = out[out.length - 1];
+    if (last && last.name === name) {
+      last.count += 1;
+      last.part = part;
+      last.callId = callId ?? last.callId;
+    } else {
+      out.push({ name, callId, count: 1, part });
+    }
+  }
+  return out;
+}
+
 function toolLabel(name: string): string {
-  const lower = name.toLowerCase();
+  // Strip MCP / AI-SDK prefixes before pattern-matching so a name like
+  // `mcp__cloudflare-docs__search_cloudflare_documentation` doesn't slip
+  // through as the unhelpful `s search`.
+  const stripped = name
+    .replace(/^tool[-_][a-z0-9]+[-_]/i, "")  // tool_<hash>_ or tool-<hash>-
+    .replace(/^mcp[-_]+[a-z0-9-]+[-_]+/i, "") // mcp__<server>__
+    .replace(/^[a-z]_+/i, ""); // single-letter MCP-server prefixes like "s_"
+  const lower = stripped.toLowerCase();
   if (lower.includes("websearch") || (lower.includes("web") && lower.includes("search"))) return "web search";
+  if (lower.includes("cloudflare") && lower.includes("doc")) return "cloudflare docs";
+  if (lower.includes("search")) return "search";
   if (lower.includes("document") || lower.includes("doc")) return "document updated";
-  if (lower.includes("browser")) return "browser session";
-  if (lower.includes("image")) return "image generated";
-  if (lower.includes("code")) return "code run";
-  if (lower.includes("memory")) return "memory lookup";
-  if (lower.includes("goal")) return "goal updated";
-  // Humanize snake/camel case.
-  return name
-    .replace(/^tool_[a-z0-9]+_/i, "")
+  if (lower.includes("browser") || lower.includes("navigate")) return "browser session";
+  if (lower.includes("screenshot")) return "screenshot";
+  if (lower.includes("image")) return "image";
+  if (lower.includes("code") || lower.includes("sandbox")) return "code";
+  if (lower.includes("fetch") || lower.includes("http")) return "fetch";
+  if (lower.includes("memory")) return "memory";
+  if (lower.includes("goal")) return "goal";
+  if (lower.includes("file")) return "file";
+  // Humanize snake / camel / kebab case.
+  return stripped
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
     .toLowerCase();
 }
 
