@@ -1,7 +1,7 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
-  title: "open-think",
+  title: "openthink2",
   description: "Cloudflare-native Personal Agent OS",
   themeConfig: {
     nav: [
@@ -19,6 +19,15 @@ export default defineConfig({
           { text: "Cloudflare Token", link: "/guide/cloudflare-token" },
           { text: "Runtime Packages", link: "/guide/packages" },
           { text: "Security", link: "/guide/security" }
+        ]
+      },
+      {
+        text: "Agent",
+        items: [
+          { text: "Orchestrator & Sub-agents", link: "/guide/orchestrator-and-subagents" },
+          { text: "Skills, Approval, Code-mode", link: "/guide/skills-and-approval" },
+          { text: "Hosted Cloud Agent", link: "/guide/hosted-cloud-agent" },
+          { text: "Effect Executor", link: "/guide/effect-executor" }
         ]
       }
     ]

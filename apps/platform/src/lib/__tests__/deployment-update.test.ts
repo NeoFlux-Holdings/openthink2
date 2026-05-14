@@ -135,7 +135,7 @@ describe("deployment updates", () => {
       "fetch",
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const target = String(url);
-        if (target.includes("api.github.com/repos/NeoFlux-Holdings/OpenThink/commits/main")) {
+        if (target.includes("api.github.com/repos/NeoFlux-Holdings/openthink2/commits/main")) {
           return new Response(JSON.stringify({ sha: "abc123456789" }), {
             headers: { "Content-Type": "application/json" }
           });
@@ -198,7 +198,7 @@ describe("deployment updates", () => {
       "fetch",
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const target = String(url);
-        if (target.includes("api.github.com/repos/NeoFlux-Holdings/OpenThink/commits/main")) {
+        if (target.includes("api.github.com/repos/NeoFlux-Holdings/openthink2/commits/main")) {
           return new Response(JSON.stringify({ sha: "abc123456789" }), {
             headers: { "Content-Type": "application/json" }
           });
@@ -281,7 +281,7 @@ describe("deployment updates", () => {
       "fetch",
       vi.fn(async (url: string | URL | Request) => {
         const target = String(url);
-        if (target.includes("api.github.com/repos/NeoFlux-Holdings/OpenThink/commits/main")) {
+        if (target.includes("api.github.com/repos/NeoFlux-Holdings/openthink2/commits/main")) {
           return new Response(JSON.stringify({ sha: "abc123456789" }), {
             headers: { "Content-Type": "application/json" }
           });
@@ -331,7 +331,7 @@ describe("deployment updates", () => {
       "fetch",
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const target = String(url);
-        if (target.includes("api.github.com/repos/NeoFlux-Holdings/OpenThink/commits/main")) {
+        if (target.includes("api.github.com/repos/NeoFlux-Holdings/openthink2/commits/main")) {
           return new Response(JSON.stringify({ sha: "abc123456789" }), {
             headers: { "Content-Type": "application/json" }
           });
@@ -393,7 +393,7 @@ describe("deployment updates", () => {
       "fetch",
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const target = String(url);
-        if (target.includes("api.github.com/repos/NeoFlux-Holdings/OpenThink/commits/main")) {
+        if (target.includes("api.github.com/repos/NeoFlux-Holdings/openthink2/commits/main")) {
           return new Response(JSON.stringify({ sha: "abc123456789" }), {
             headers: { "Content-Type": "application/json" }
           });
@@ -473,7 +473,7 @@ describe("deployment updates", () => {
       "fetch",
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         const target = String(url);
-        if (target.includes("api.github.com/repos/NeoFlux-Holdings/OpenThink/commits/main")) {
+        if (target.includes("api.github.com/repos/NeoFlux-Holdings/openthink2/commits/main")) {
           return new Response(JSON.stringify({ sha: "abc123456789" }), {
             headers: { "Content-Type": "application/json" }
           });
@@ -579,7 +579,7 @@ describe("deployment updates", () => {
       "fetch",
       vi.fn(async (url: string | URL | Request) => {
         const target = String(url);
-        if (target.includes("api.github.com/repos/NeoFlux-Holdings/OpenThink/commits/main")) {
+        if (target.includes("api.github.com/repos/NeoFlux-Holdings/openthink2/commits/main")) {
           return new Response(JSON.stringify({ sha: "abc123456789" }), {
             headers: { "Content-Type": "application/json" }
           });

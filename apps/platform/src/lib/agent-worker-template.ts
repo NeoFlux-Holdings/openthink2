@@ -583,7 +583,7 @@ async function resolveChatResponse(payload, env, modelSettings) {
         "D1 memory is available through the built-in memory_list tool and the /memory endpoint. If asked what memory says, answer from recent D1 memory rows or call memory_list. Do not ask the owner for the D1 database id for this agent's own memory.",
         "R2 files are available through files_list and /files. Tasks are available through queue_task and /tasks. Runtime and update status are available through runtime_status and /runtime/context.",
         "Vectorize is provisioned as semantic memory when the VECTORIZE binding is present; explain that vector query wiring is a next runtime tool if no direct vector query tool is available.",
-        "For source updates, explain three lanes: default managed updates from the configured GitHub NeoFlux-Holdings/OpenThink repository through the platform reconciler; optional self-editing through a per-agent Cloudflare Artifacts workspace plus Sandbox/Containers when enabled; and this runtime's /updates/apply endpoint for a verified built worker.js bundle. Managed GitHub updates are preferred for upstream releases. The Artifacts/Sandbox lane is for agent-authored changes, tests, diffs, and PR preparation, and can be added later when the account has paid capabilities.",
+        "For source updates, explain three lanes: default managed updates from the configured GitHub NeoFlux-Holdings/openthink2 repository through the platform reconciler; optional self-editing through a per-agent Cloudflare Artifacts workspace plus Sandbox/Containers when enabled; and this runtime's /updates/apply endpoint for a verified built worker.js bundle. Managed GitHub updates are preferred for upstream releases. The Artifacts/Sandbox lane is for agent-authored changes, tests, diffs, and PR preparation, and can be added later when the account has paid capabilities.",
         "For resets, prefer the platform /api/deployment/update action reset. Source restore reuploads the generated Worker from GitHub and keeps workspace metadata and the current personal-agent brain. Factory reset also disables auto update, removes workspace metadata and custom non-secret bindings, clears the personal-agent brain unless the reset payload reconfigures it, restores Kimi K2.6 Workers AI defaults, and preserves encrypted Worker secrets. Require explicit owner confirmation before reset.",
         "If local agent changes and remote updates both exist, use this order: snapshot current runtime status, identify local changes or bindings/secrets, fetch remote status, propose rebase or reconcile, ask before destructive replacement, then deploy with secret preservation. Treat this as the update-management playbook.",
         "Secrets are managed through /secrets and the secret_put tool. Non-secret bindings are managed through /updates/bindings and the binding_add tool, which patches Worker script settings. For new resource-backed bindings, create or identify the Cloudflare resource first, then bind its id/name.",
@@ -1466,7 +1466,7 @@ function workspaceStatus(env) {
     mode: env.OPEN_THINK_WORKSPACE_MODE || (artifactsRemote ? "artifacts-sandbox-workspace" : "basic-github-updates"),
     basicGithubUpdates: {
       available: true,
-      repository: env.OPEN_THINK_UPDATE_REPOSITORY || "NeoFlux-Holdings/OpenThink",
+      repository: env.OPEN_THINK_UPDATE_REPOSITORY || "NeoFlux-Holdings/openthink2",
       branch: env.OPEN_THINK_UPDATE_BRANCH || "main",
       note: "Works on Free or Paid accounts when a Cloudflare API token can update this Worker."
     },
@@ -1547,9 +1547,9 @@ async function runtimeSnapshot(env) {
     workspace: workspaceStatus(env),
     sourceUpdate: {
       platformUpdateApi: "/api/deployment/update on the open-think platform",
-      githubUpstream: "Default update lane: check NeoFlux-Holdings/OpenThink, regenerate this Worker, upload with keep_bindings.",
+      githubUpstream: "Default update lane: check NeoFlux-Holdings/openthink2, regenerate this Worker, upload with keep_bindings.",
       artifactSync: "Optional self-edit lane: Cloudflare Artifacts Git workspace plus Sandbox/Containers when enabled.",
-      remoteRepository: env.OPEN_THINK_UPDATE_REPOSITORY || "NeoFlux-Holdings/OpenThink",
+      remoteRepository: env.OPEN_THINK_UPDATE_REPOSITORY || "NeoFlux-Holdings/openthink2",
       remoteBranch: env.OPEN_THINK_UPDATE_BRANCH || "main",
       remoteBundlePath: env.OPEN_THINK_UPDATE_BUNDLE_PATH || "dist/worker.js",
       remoteStatusEndpoint: "/updates/remote",
@@ -2333,7 +2333,7 @@ function normalizeWorkerBinding(input) {
 
 function remoteUpdateConfig(env) {
   return {
-    repository: String(env.OPEN_THINK_UPDATE_REPOSITORY || "NeoFlux-Holdings/OpenThink"),
+    repository: String(env.OPEN_THINK_UPDATE_REPOSITORY || "NeoFlux-Holdings/openthink2"),
     branch: String(env.OPEN_THINK_UPDATE_BRANCH || "main"),
     bundlePath: String(env.OPEN_THINK_UPDATE_BUNDLE_PATH || "dist/worker.js")
   };
@@ -4469,7 +4469,7 @@ await agent.createSubAgent({ name: "Scout", purpose: "Inspect deploy readiness",
           : (data.error || "Runtime updates need Cloudflare API token, account id, and script name.");
         metricBox.innerHTML = [
           metric("Script", data.scriptName || "unknown"),
-          metric("Remote", data.remote?.repository || "NeoFlux-Holdings/OpenThink"),
+          metric("Remote", data.remote?.repository || "NeoFlux-Holdings/openthink2"),
           metric("Branch", data.remote?.branch || "main"),
           metric("Bundle", data.configuredBundleUrl ? "configured secret" : (data.remote?.bundlePath || "dist/worker.js")),
           metric("Workspace", data.workspace?.mode || "basic-github-updates")

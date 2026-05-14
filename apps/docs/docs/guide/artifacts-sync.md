@@ -1,6 +1,6 @@
 # Artifacts Sync
 
-Deployed agents always have a basic GitHub upstream update lane. The platform can check `NeoFlux-Holdings/OpenThink`, regenerate the Worker, and upload it with secret preservation.
+Deployed agents always have a basic GitHub upstream update lane. The platform can check `NeoFlux-Holdings/openthink2`, regenerate the Worker, and upload it with secret preservation.
 
 Cloudflare Artifacts is the optional self-edit workspace lane. It can be enabled later for paid accounts that want the agent to maintain its own Git workspace, run Sandbox-backed tests/previews, and prepare pull requests back to the upstream repo.
 
@@ -10,7 +10,7 @@ The sync loop is:
 2. The agent edits files in the Artifacts draft workspace.
 3. Sandbox or Containers run tests, builds, commands, and previews when enabled.
 4. The reconciler commits/pushes workspace changes, generates the Worker bundle, and uploads it with `keep_bindings`.
-5. Reusable improvements can be proposed as branches or pull requests against `NeoFlux-Holdings/OpenThink`.
+5. Reusable improvements can be proposed as branches or pull requests against `NeoFlux-Holdings/openthink2`.
 
 ## Environment
 

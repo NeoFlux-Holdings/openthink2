@@ -513,7 +513,7 @@ async function resolveGithubUpdateState(
   metadata?: DeploymentUpdateMetadata
 ): Promise<GithubUpdateState> {
   const repository =
-    readEnvString(env, "OPEN_THINK_UPDATE_REPOSITORY") ?? "NeoFlux-Holdings/OpenThink";
+    readEnvString(env, "OPEN_THINK_UPDATE_REPOSITORY") ?? "NeoFlux-Holdings/openthink2";
   const branch = readEnvString(env, "OPEN_THINK_UPDATE_BRANCH") ?? metadata?.branch ?? "main";
   const remoteUrl = `https://github.com/${repository}`;
   const headers: Record<string, string> = {
@@ -1240,7 +1240,7 @@ function buildWorkspaceCapabilityPlan(
 ): DeploymentWorkspaceCapabilityPlan {
   const workspace = readDeploymentWorkspaceMetadata(resourcePlan);
   const repository =
-    readEnvString(env, "OPEN_THINK_UPDATE_REPOSITORY") ?? "NeoFlux-Holdings/OpenThink";
+    readEnvString(env, "OPEN_THINK_UPDATE_REPOSITORY") ?? "NeoFlux-Holdings/openthink2";
   const branch =
     metadata?.branch ??
     readEnvString(env, "OPEN_THINK_UPDATE_BRANCH") ??
@@ -1383,7 +1383,7 @@ function buildDeploymentUpdateMetadata(input: {
     updatedAt: new Date().toISOString()
   };
   const updateRepository =
-    readEnvString(input.env, "OPEN_THINK_UPDATE_REPOSITORY") ?? "NeoFlux-Holdings/OpenThink";
+    readEnvString(input.env, "OPEN_THINK_UPDATE_REPOSITORY") ?? "NeoFlux-Holdings/openthink2";
   const remoteUrl = input.status?.remoteUrl ?? `https://github.com/${updateRepository}`;
   const branch = input.status?.branch ?? readEnvString(input.env, "OPEN_THINK_UPDATE_BRANCH");
 
@@ -1463,7 +1463,7 @@ function buildWorkerUploadMetadata(
     ? normalizePersonalAgentConfig(personalAgentOverride)
     : readPersonalAgentConfig(resourcePlan, env, factoryDefaults);
   const updateRepository =
-    readEnvString(env, "OPEN_THINK_UPDATE_REPOSITORY") ?? "NeoFlux-Holdings/OpenThink";
+    readEnvString(env, "OPEN_THINK_UPDATE_REPOSITORY") ?? "NeoFlux-Holdings/openthink2";
   const updateBranch = readEnvString(env, "OPEN_THINK_UPDATE_BRANCH") ?? "main";
   const updateBundlePath = readEnvString(env, "OPEN_THINK_UPDATE_BUNDLE_PATH") ?? "dist/worker.js";
   const compatibilityFlags = Array.isArray(wrangler?.compatibility_flags)

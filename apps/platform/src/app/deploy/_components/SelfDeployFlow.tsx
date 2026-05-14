@@ -376,7 +376,9 @@ export function SelfDeployFlow({ isDeploying, onDeploy }: SelfDeployFlowProps) {
       ) : null}
 
       <div className="field">
-        <label htmlFor="access-email">Access owner email</label>
+        <label htmlFor="access-email">
+          Access owner email <span className="field-tag">auto-filled</span>
+        </label>
         <input
           id="access-email"
           type="email"
@@ -385,19 +387,24 @@ export function SelfDeployFlow({ isDeploying, onDeploy }: SelfDeployFlowProps) {
           placeholder="Filled from token verification"
         />
         <span className="field-hint">
-          Optional before verification. By default the agent is locked to the email associated with
-          the Cloudflare token.
+          The deployed agent is locked down with a Cloudflare Access self-hosted application — only
+          this email can sign in. We default to the email on your Cloudflare token; change it here if
+          a different person should own the agent.
         </span>
       </div>
 
       <div className="field">
-        <label htmlFor="extra-emails">Additional Access emails</label>
+        <label htmlFor="extra-emails">Additional Access emails (optional)</label>
         <textarea
           id="extra-emails"
           value={accessAdditionalEmails}
           onChange={(event) => setAccessAdditionalEmails(event.target.value)}
           placeholder="teammate@example.com, ops@example.com"
         />
+        <span className="field-hint">
+          Comma- or newline-separated. Anyone you add here also gets sign-in access through Cloudflare
+          Access. Leave blank to keep the agent solo.
+        </span>
       </div>
 
       <div className="field">

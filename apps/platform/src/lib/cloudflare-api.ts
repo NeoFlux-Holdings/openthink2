@@ -1578,7 +1578,7 @@ function generateWorkerUploadMetadata(input: {
       {
         type: "plain_text",
         name: "OPEN_THINK_UPDATE_REPOSITORY",
-        text: "NeoFlux-Holdings/OpenThink"
+        text: "NeoFlux-Holdings/openthink2"
       },
       {
         type: "plain_text",
