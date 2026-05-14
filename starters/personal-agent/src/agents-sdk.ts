@@ -430,6 +430,11 @@ export class PersonalChatAgent extends AIChatAgent<RuntimeEnv> {
       "Use the native AIChatAgent chat protocol for resumable WebSocket streaming and SQLite message persistence.",
       "If several user messages are queued without an assistant answer, treat them as one latest turn and answer the newest actionable request first.",
       "Do not continue stale deployment or tool work unless the newest user message explicitly asks you to continue it.",
+      // Anti-stall behaviour: the model has a habit of saying things like
+      // "let me look that up" or "I'll come back to you with the answer"
+      // and then not following through. Cap that pattern explicitly.
+      "Do the work in this turn — don't promise to look something up and then stop. If you announce a tool call, actually perform it and then produce a final user-facing answer in the same turn. End every turn with a concrete answer, recommendation, or a follow-up question — never with 'let me look that up' as the final line.",
+      "When a search returns nothing useful, summarise what you tried, what you didn't find, and what the user can do next — don't just trail off.",
       cloudAgentInstanceInstruction(env),
       goalCommandInstruction(),
       "You can create, brief, pause, resume, archive, summarize, and message Cloud Agent Instance sub-agents through built-in sub-agent tools when the owner asks for delegated work.",
@@ -447,7 +452,10 @@ export class PersonalChatAgent extends AIChatAgent<RuntimeEnv> {
         ...this.builtinTools()
       },
       experimental_transform: suppressToolInputStreamingTransform(),
-      stopWhen: stepCountIs(5),
+      // Was 5 — the agent ran out of steps mid-search and stopped
+      // before producing a final answer. 15 gives room for a few
+      // exploratory tool calls plus a synthesis turn.
+      stopWhen: stepCountIs(15),
       ...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
       onFinish
     });

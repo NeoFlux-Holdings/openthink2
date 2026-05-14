@@ -5129,6 +5129,27 @@ export default {
     if (routed) return routed;
 
     const url = new URL(request.url);
+
+    // Dispatch the Persona shell's data routes to the OrchestratorAgent
+    // Durable Object. The Persona client calls these with a bare path
+    // (e.g. fetch("/learning/pending")) — without this fallback,
+    // routeAgentRequest doesn't match and we 404 even though the
+    // orchestrator's onRequest handles them.
+    if (
+      url.pathname.startsWith("/learning/") ||
+      url.pathname.startsWith("/goals") ||
+      url.pathname.startsWith("/invocations") ||
+      url.pathname.startsWith("/knowledge") ||
+      url.pathname.startsWith("/orchestrator/")
+    ) {
+      const binding = (env as { ORCHESTRATOR?: DurableObjectNamespace }).ORCHESTRATOR;
+      if (binding) {
+        const id = binding.idFromName("default");
+        const stub = binding.get(id);
+        return stub.fetch(request);
+      }
+    }
+
     if (url.pathname === "/health") {
       return Response.json(hostedAgentHealth(env as RuntimeEnv));
     }
