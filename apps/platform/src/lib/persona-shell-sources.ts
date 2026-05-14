@@ -1018,6 +1018,30 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
 
   const workingDoc = useMemo(() => extractWorkingDoc(messages), [messages]);
 
+  // Stuck-state watchdog: when the agent has been "busy" for a long
+  // time without any new content, surface a recovery banner so the
+  // user can stop or retry. Resets every time the message count or
+  // content fingerprint changes.
+  const [stuck, setStuck] = useState(false);
+  const contentSignature = useMemo(() => {
+    let total = 0;
+    for (const message of messages) {
+      const parts = (message as { parts?: unknown[] }).parts ?? [];
+      for (const part of parts) {
+        if (part && typeof part === "object" && "text" in part && typeof (part as { text: unknown }).text === "string") {
+          total += ((part as { text: string }).text ?? "").length;
+        }
+      }
+    }
+    return \`\${messages.length}:\${total}\`;
+  }, [messages]);
+  useEffect(() => {
+    setStuck(false);
+    if (!busy) return;
+    const timer = setTimeout(() => setStuck(true), 30_000);
+    return () => clearTimeout(timer);
+  }, [busy, contentSignature]);
+
   const submitNewTask = useCallback(
     (prompt: string) => {
       if (!prompt.trim() || busy) return;
@@ -1144,6 +1168,16 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
   return (
     <>
       <PersonaShell {...shellProps} />
+      {stuck && busy ? (
+        <div className="persona-app__stuck" role="status">
+          <span>
+            The agent has been working on this for a while. Stop and try again, or wait it out.
+          </span>
+          <button type="button" onClick={() => void stop()}>
+            Stop
+          </button>
+        </div>
+      ) : null}
       {error ? (
         <div className="persona-app__error" role="alert">
           <span>{error.message || String(error)}</span>
@@ -1884,7 +1918,11 @@ function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbl
     .filter(Boolean)
     .join("\\n\\n");
 
-  const statusLine = busy ? deriveStatusLine(toolParts) : undefined;
+  const statusLine = busy
+    ? deriveStatusLine(toolParts) ?? (role === "assistant" ? "Thinking…" : undefined)
+    : undefined;
+  const hasAnyVisible = text.trim().length > 0 || toolParts.length > 0 || reasoningText.trim().length > 0;
+  const isEmptyAssistant = role === "assistant" && !busy && !hasAnyVisible;
 
   return (
     <article className={\`persona-bubble persona-bubble--\${role}\`} data-role={role}>
@@ -1892,7 +1930,14 @@ function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbl
 
       {statusLine ? (
         <p className="persona-bubble__status" aria-live="polite">
+          <span className="persona-bubble__status-dot" aria-hidden="true" />
           {statusLine}
+        </p>
+      ) : null}
+
+      {isEmptyAssistant ? (
+        <p className="persona-bubble__empty">
+          No response — try resending the question or asking it a different way.
         </p>
       ) : null}
 
@@ -2025,10 +2070,23 @@ function deriveStatusLine(toolParts: UIMessage["parts"]): string | undefined {
         : lower.includes("read") || lower.includes("get")
           ? "Reading"
           : "Running";
-    if (inputText) return \`\${verb} \${inputText}…\`;
+    const cleaned = inputText ? formatStatusFragment(inputText) : undefined;
+    if (cleaned) return \`\${verb} \${cleaned}…\`;
     return \`\${verb} \${toolLabel(toolName)}…\`;
   }
   return undefined;
+}
+
+/**
+ * Tools sometimes carry multi-line code snippets in their input (e.g.
+ * \`query: "async () => { spec.paths[...]; return {...}; }"\`). Render
+ * those as a single short line so the status line stays a status line
+ * instead of dumping the snippet into the message body.
+ */
+function formatStatusFragment(input: string): string {
+  const collapsed = input.replace(/\\s+/g, " ").trim();
+  if (collapsed.length <= 80) return collapsed;
+  return \`\${collapsed.slice(0, 77)}…\`;
 }
 
 function extractFirstStringField(value: Record<string, unknown>): string | undefined {
@@ -3747,10 +3805,53 @@ export const PERSONA_PAGES_CSS = `/*
 }
 
 .persona-bubble__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
   margin: 0;
   font-size: 0.82rem;
-  color: var(--persona-muted);
+  color: var(--persona-muted, #5e5e66);
   font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.persona-bubble__status-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--persona-accent, #3a5bd7);
+  animation: persona-bubble-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes persona-bubble-pulse {
+  0%, 100% {
+    transform: scale(0.85);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .persona-bubble__status-dot {
+    animation: none;
+  }
+}
+
+.persona-bubble__empty {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(180, 59, 53, 0.06);
+  color: var(--persona-ink-soft, #2f2f37);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .persona-bubble__tools {
@@ -4082,6 +4183,40 @@ export const PERSONA_PAGES_CSS = `/*
   padding: 4px 10px;
   border-radius: 999px;
   cursor: pointer;
+}
+
+.persona-app__stuck {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(241, 113, 5, 0.98);
+  color: white;
+  font-size: 0.86rem;
+  z-index: 70;
+  box-shadow: 0 16px 40px rgba(241, 113, 5, 0.28);
+}
+
+.persona-app__stuck button {
+  border: none;
+  background: rgba(255, 255, 255, 0.22);
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.persona-app__stuck button:hover {
+  background: rgba(255, 255, 255, 0.32);
 }
 
 /* === Responsive ============================================================ */
