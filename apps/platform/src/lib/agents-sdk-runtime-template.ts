@@ -8,11 +8,35 @@ import {
   PERSONA_APP_TSX,
   PERSONA_COMPOSER_TSX,
   PERSONA_HOME_TSX,
+  PERSONA_LIBRARY_PAGE_TSX,
   PERSONA_PAGES_CSS,
+  PERSONA_SEARCH_PALETTE_TSX,
+  PERSONA_SETTINGS_PAGE_TSX,
   PERSONA_SHELL_CSS,
   PERSONA_SHELL_TSX,
+  PERSONA_SKILLS_PAGE_TSX,
   PERSONA_THREAD_FEED_TSX
 } from "./persona-shell-sources";
+
+// Re-export shim emitted at src/skills.ts in the deployed bundle so
+// `import "../skills"` from persona-pages/skills-page.tsx and
+// `import "./skills"` from persona-app.tsx both resolve. The actual
+// definitions live inside the inlined orchestrator-runtime module.
+const PERSONA_SKILLS_SHIM_TS = `// Auto-generated shim. Do not edit by hand.
+// Re-exports the skill registry symbols from the inlined orchestrator
+// runtime so the Persona pages don't need a workspace-package import.
+export {
+  builtinSkillPacks,
+  flattenPacks,
+  buildSystemPromptFromSkills,
+  defaultPreloadPackIds,
+  createDoSkillStore,
+  type Skill,
+  type SkillPack,
+  type SkillSourceKind,
+  type SkillStore
+} from "./orchestrator-runtime";
+`;
 import {
   normalizePersonalAgentConfig,
   personalAgentPublicConfigBindingText,
@@ -101,8 +125,32 @@ export function renderAgentsSdkPersonalAgentRuntime(
       contents: PERSONA_COMPOSER_TSX
     },
     {
+      path: "src/persona-pages/library-page.tsx",
+      contents: PERSONA_LIBRARY_PAGE_TSX
+    },
+    {
+      path: "src/persona-pages/skills-page.tsx",
+      contents: PERSONA_SKILLS_PAGE_TSX
+    },
+    {
+      path: "src/persona-pages/settings-page.tsx",
+      contents: PERSONA_SETTINGS_PAGE_TSX
+    },
+    {
+      path: "src/persona-pages/search-palette.tsx",
+      contents: PERSONA_SEARCH_PALETTE_TSX
+    },
+    {
       path: "src/persona-pages/persona-pages.css",
       contents: PERSONA_PAGES_CSS
+    },
+    {
+      // Shim so `import "../skills"` from persona-pages/skills-page.tsx
+      // (and `import "./skills"` from persona-app.tsx) resolves in the
+      // deployed bundle. The actual implementation lives in
+      // orchestrator-runtime.ts; this just re-exports the relevant names.
+      path: "src/skills.ts",
+      contents: PERSONA_SKILLS_SHIM_TS
     },
     {
       path: "src/orchestrator-runtime.ts",
@@ -325,6 +373,31 @@ export {
   PersonaComposer,
   type PersonaComposerProps
 } from "./persona-composer";
+
+export { LibraryPage, type LibraryPageProps, type PersonaArtifact as LibraryArtifact } from "./library-page";
+export { SkillsPage, type SkillsPageProps, type SkillsTabId } from "./skills-page";
+export {
+  SettingsPage,
+  defaultPersonaSettings,
+  approvalModeOptions,
+  codeModePolicies,
+  modelProviders,
+  trainingModes,
+  buildSettingsPatch,
+  type PersonaSettings,
+  type SettingsApprovalMode,
+  type CodeModePolicy,
+  type ModelProvider,
+  type TrainingMode,
+  type SettingsPageProps
+} from "./settings-page";
+export {
+  SearchPalette,
+  type SearchPaletteProps,
+  type SearchThreadHit,
+  type SearchArtifactHit,
+  type SearchMemoryHit
+} from "./search-palette";
 `;
 }
 

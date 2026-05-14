@@ -37,11 +37,8 @@ interface DoStorageLike {
   list<T = unknown>(options?: { prefix?: string }): Promise<Map<string, T>>;
 }
 
-import { Schema } from "effect";
-import type { Schema } from "effect";
 import { Data, Effect, Schema } from "effect";
 import type { ParseError } from "effect/ParseResult";
-import { Effect } from "effect";
 
 /**
  * Shared Durable Object storage shape used by every internal module.
