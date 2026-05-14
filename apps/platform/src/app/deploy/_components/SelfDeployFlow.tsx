@@ -22,6 +22,7 @@ import {
   buildOpenThinkTokenUrl,
   openThinkTokenPermissions
 } from "@/lib/cloudflare-token-url";
+import { randomFunAgentName } from "@/lib/fun-agent-name";
 
 interface SelfDeployFlowProps {
   isDeploying: boolean;
@@ -109,7 +110,7 @@ const thinkingOptions = [
 ] as const;
 
 export function SelfDeployFlow({ isDeploying, onDeploy }: SelfDeployFlowProps) {
-  const [agentName, setAgentName] = useState("My Personal Agent");
+  const [agentName, setAgentName] = useState(() => randomFunAgentName());
   const [cloudflareAccountId, setCloudflareAccountId] = useState("");
   const [accessAllowedEmail, setAccessAllowedEmail] = useState("");
   const [accessAdditionalEmails, setAccessAdditionalEmails] = useState("");
@@ -271,19 +272,38 @@ export function SelfDeployFlow({ isDeploying, onDeploy }: SelfDeployFlowProps) {
 
       <div className="field">
         <label htmlFor="agent-name">Agent name</label>
-        <input
-          id="agent-name"
-          value={agentName}
-          onChange={(event) => {
-            setAgentName(event.target.value);
-            if (!customHostPrefixDirty) {
-              setCustomHostPrefix(sanitizeDomainLabel(event.target.value));
-            }
-          }}
-          required
-        />
+        <div className="inline-control">
+          <input
+            id="agent-name"
+            value={agentName}
+            onChange={(event) => {
+              setAgentName(event.target.value);
+              if (!customHostPrefixDirty) {
+                setCustomHostPrefix(sanitizeDomainLabel(event.target.value));
+              }
+            }}
+            required
+          />
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={() => {
+              const next = randomFunAgentName();
+              setAgentName(next);
+              if (!customHostPrefixDirty) {
+                setCustomHostPrefix(sanitizeDomainLabel(next));
+              }
+            }}
+            aria-label="Shuffle a new fun agent name"
+            title="Shuffle"
+          >
+            Shuffle
+          </button>
+        </div>
         <span className="field-hint">
-          This is also used for the Worker name, for example <code>open-think-tomtom-7eazhw</code>.
+          Two-word hyphenated names are friendly subdomains. Used for the Worker name (
+          <code>open-think-{sanitizeDomainLabel(agentName) || "your-agent"}-xxxxxx</code>) and an
+          optional custom subdomain. Change it whenever you like.
         </span>
       </div>
 

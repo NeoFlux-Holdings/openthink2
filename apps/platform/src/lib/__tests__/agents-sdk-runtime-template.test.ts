@@ -47,7 +47,9 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
     expect(packageJson.dependencies).toMatchObject({
       "@ai-sdk/react": "^3.0.0",
       "@cloudflare/ai-chat": "^0.6.2",
-      agents: "^0.12.3",
+      "@cloudflare/think": "^0.4.2",
+      "@modelcontextprotocol/sdk": "^1.20.0",
+      agents: "^0.12.4",
       ai: "^6.0.174",
       react: "^19.2.5",
       "react-dom": "^19.2.5",
