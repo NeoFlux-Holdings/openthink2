@@ -89,22 +89,78 @@ function stripInternalImports(text) {
 }
 
 /** Hoist any `import { z } from "zod"` to a single top-level import.
- *  Strip subsequent duplicates so the bundle compiles. */
+ *  Strip subsequent duplicates so the bundle compiles.
+ *
+ *  Merges imports from the same module path so each external symbol is
+ *  declared exactly once. Without this, `import { Schema } from "effect"`
+ *  in one source file and `import { Data, Effect, Schema } from "effect"`
+ *  in another would both end up in the bundle and `Schema` would be
+ *  declared twice. */
 function consolidateImports(modules) {
-  const externalImports = new Set();
+  // Per-module imports keyed by module path -> { values: Set, types: Set, namespace: Set, sideEffects: bool }
+  const byModule = new Map();
   const cleaned = [];
+
+  function add(modulePath, names, isType) {
+    if (!byModule.has(modulePath)) {
+      byModule.set(modulePath, { values: new Set(), types: new Set(), sideEffect: false });
+    }
+    const bucket = byModule.get(modulePath);
+    const target = isType ? bucket.types : bucket.values;
+    for (const name of names) target.add(name.trim());
+  }
+
   for (const m of modules) {
     const text = readFileSync(m, "utf8");
     const stripped = stripInternalImports(text);
-    const re = /^import\s+[^;]+?\s+from\s+["']([^."'][^"']*)["'];?\s*$/gm;
+    // Greedy named-imports parser. Handles:
+    //   import { A, B } from "x";
+    //   import type { A } from "x";
+    //   import { A as B, type C } from "x";
+    const re = /^import\s+(type\s+)?\{([^}]+)\}\s+from\s+["']([^"']+)["'];?\s*$/gm;
     let match;
+    let cursor = 0;
+    let withoutExternal = "";
     while ((match = re.exec(stripped)) !== null) {
-      externalImports.add(match[0].trim().replace(/^\s+/, ""));
+      const [, isTypePrefix, body, modulePath] = match;
+      if (modulePath.startsWith(".")) continue; // internal, leave as-is
+      const isType = Boolean(isTypePrefix);
+      const names = body
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const valueNames = [];
+      const typeNames = [];
+      for (const name of names) {
+        if (name.startsWith("type ")) typeNames.push(name.slice(5).trim());
+        else if (isType) typeNames.push(name);
+        else valueNames.push(name);
+      }
+      if (valueNames.length) add(modulePath, valueNames, false);
+      if (typeNames.length) add(modulePath, typeNames, true);
+      // Drop the original import from the body
+      withoutExternal += stripped.slice(cursor, match.index);
+      cursor = match.index + match[0].length;
     }
-    const withoutExternal = stripped.replace(re, "");
+    withoutExternal += stripped.slice(cursor);
     cleaned.push({ path: m, body: withoutExternal });
   }
-  return { externalImports: Array.from(externalImports), cleaned };
+
+  const externalImports = [];
+  for (const [modulePath, bucket] of byModule) {
+    if (bucket.values.size > 0) {
+      const items = Array.from(bucket.values).sort();
+      externalImports.push(`import { ${items.join(", ")} } from "${modulePath}";`);
+    }
+    // Promote any type-only names to value imports if the value
+    // import wasn't already present — TypeScript is happy with either.
+    const typeOnly = Array.from(bucket.types).filter((t) => !bucket.values.has(t)).sort();
+    if (typeOnly.length > 0) {
+      externalImports.push(`import type { ${typeOnly.join(", ")} } from "${modulePath}";`);
+    }
+  }
+
+  return { externalImports, cleaned };
 }
 
 function rel(p) {

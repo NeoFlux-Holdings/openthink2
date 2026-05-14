@@ -47,7 +47,12 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
       "src/persona-pages/persona-home.tsx",
       "src/persona-pages/persona-thread-feed.tsx",
       "src/persona-pages/persona-composer.tsx",
+      "src/persona-pages/library-page.tsx",
+      "src/persona-pages/skills-page.tsx",
+      "src/persona-pages/settings-page.tsx",
+      "src/persona-pages/search-palette.tsx",
       "src/persona-pages/persona-pages.css",
+      "src/skills.ts",
       "src/orchestrator-runtime.ts",
       "src/server.ts"
     ]);
@@ -140,7 +145,10 @@ describe("renderAgentsSdkPersonalAgentRuntime", () => {
     expect(personaIndex).toContain('from "./persona-home"');
     expect(personaIndex).toContain('from "./persona-thread-feed"');
     expect(personaIndex).toContain('from "./persona-composer"');
-    expect(personaIndex).not.toContain("library-page");
+    expect(personaIndex).toContain('from "./library-page"');
+    expect(personaIndex).toContain('from "./skills-page"');
+    expect(personaIndex).toContain('from "./settings-page"');
+    expect(personaIndex).toContain('from "./search-palette"');
 
     // Each emitted .tsx file must transpile cleanly.
     for (const personaFile of [personaApp, personaHome, threadFeed, composer]) {

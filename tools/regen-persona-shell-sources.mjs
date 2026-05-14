@@ -38,6 +38,10 @@ const FILES = [
   { key: "PERSONA_HOME_TSX", path: "persona-pages/persona-home.tsx" },
   { key: "PERSONA_THREAD_FEED_TSX", path: "persona-pages/persona-thread-feed.tsx" },
   { key: "PERSONA_COMPOSER_TSX", path: "persona-pages/persona-composer.tsx" },
+  { key: "PERSONA_LIBRARY_PAGE_TSX", path: "persona-pages/library-page.tsx" },
+  { key: "PERSONA_SKILLS_PAGE_TSX", path: "persona-pages/skills-page.tsx" },
+  { key: "PERSONA_SETTINGS_PAGE_TSX", path: "persona-pages/settings-page.tsx" },
+  { key: "PERSONA_SEARCH_PALETTE_TSX", path: "persona-pages/search-palette.tsx" },
   { key: "PERSONA_PAGES_INDEX_TS", path: "persona-pages/index.ts" },
   { key: "PERSONA_PAGES_CSS", path: "persona-pages/persona-pages.css" }
 ];

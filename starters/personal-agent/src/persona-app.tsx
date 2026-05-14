@@ -28,6 +28,11 @@ import { PersonaShell, type PersonaArtifact, type PersonaThreadSummary } from ".
 import { PersonaHome, type PersonaRecentThread } from "./persona-pages/persona-home";
 import { PersonaThreadFeed } from "./persona-pages/persona-thread-feed";
 import { PersonaComposer } from "./persona-pages/persona-composer";
+import { LibraryPage } from "./persona-pages/library-page";
+import { SkillsPage } from "./persona-pages/skills-page";
+import { SettingsPage, defaultPersonaSettings, type PersonaSettings } from "./persona-pages/settings-page";
+import { SearchPalette } from "./persona-pages/search-palette";
+import { builtinSkillPacks, flattenPacks, type Skill } from "./skills";
 
 export type PersonaView = "home" | "thread" | "library" | "learning" | "skills" | "settings" | "search";
 
@@ -49,6 +54,39 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
   const [recentThreads, setRecentThreads] = useState<PersonaRecentThread[]>([]);
   const lastSubmitRef = useRef<{ text: string; at: number } | null>(null);
 
+  // Persisted-in-memory persona settings. The deployed agent will pick
+  // up changes for the duration of the session; durable persistence to
+  // the orchestrator's DO is a follow-up.
+  const [personaSettings, setPersonaSettings] = useState<PersonaSettings>(defaultPersonaSettings);
+  const updatePersonaSettings = useCallback((patch: Partial<PersonaSettings>) => {
+    setPersonaSettings((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  // Skills come from the bundled registry (Cloudflare pack preloaded).
+  // Manual toggle / pin lives in component state for now; durable
+  // persistence is a follow-up.
+  const [skillOverrides, setSkillOverrides] = useState<Record<string, { enabled?: boolean; pinned?: boolean }>>({});
+  const allSkills = useMemo<Skill[]>(() => {
+    const flat = flattenPacks(builtinSkillPacks);
+    return flat.map((skill) => {
+      const override = skillOverrides[skill.id];
+      if (!override) return skill;
+      return {
+        ...skill,
+        enabled: override.enabled ?? skill.enabled,
+        pinned: override.pinned ?? skill.pinned
+      };
+    });
+  }, [skillOverrides]);
+  const activeSkills = useMemo(() => allSkills.filter((s) => s.enabled), [allSkills]);
+  const pendingSkills = useMemo(() => allSkills.filter((s) => !s.enabled), [allSkills]);
+  const toggleSkill = useCallback((id: string, enabled: boolean) => {
+    setSkillOverrides((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), enabled } }));
+  }, []);
+  const pinSkill = useCallback((id: string, pinned: boolean) => {
+    setSkillOverrides((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), pinned } }));
+  }, []);
+
   const agent = useAgent({
     agent: "PersonalChatAgent",
     name: DEFAULT_THREAD_ID
@@ -65,7 +103,11 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
     isServerStreaming
   } = useAgentChat({
     agent,
-    autoContinueAfterToolResult: false,
+    // Persona's normie default: feed every tool result back to the
+    // model so the assistant produces a final answer without manual
+    // continuation. The legacy chat (?shell=legacy) keeps the
+    // per-tool approval flow for power users.
+    autoContinueAfterToolResult: true,
     resume: false
   });
 
@@ -166,38 +208,39 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
           />
         );
       case "library":
-        return (
-          <PersonaSimplePage
-            title="Library"
-            description="Every artifact your agent has produced will be browsable here."
-          />
-        );
+        // LibraryPage owns its own narrower PersonaArtifact union (no
+        // "diff" kind). Once we wire real artifact extraction in
+        // PersonaApp we'll project shell-shaped artifacts into the
+        // library shape here.
+        return <LibraryPage artifacts={[]} />;
       case "learning":
-        return (
-          <PersonaSimplePage
-            title="Learning"
-            description="Pending lessons your agent has captured. Approve them to update its persona."
-          />
-        );
+        return <LearningPanel />;
       case "skills":
         return (
-          <PersonaSimplePage
-            title="Skills"
-            description="Built-in and installed skills your agent can call."
+          <SkillsPage
+            activeSkills={activeSkills}
+            pendingSkills={pendingSkills}
+            onToggleSkill={toggleSkill}
+            onPinSkill={pinSkill}
           />
         );
       case "settings":
         return (
-          <PersonaSimplePage
-            title="Settings"
-            description="Model, approvals, training mode, and other preferences."
+          <SettingsPage
+            settings={personaSettings}
+            onUpdate={updatePersonaSettings}
           />
         );
       case "search":
+        // Search opens as a modal overlay rather than a routed page.
+        // Show the home screen behind the palette so dismissing returns
+        // the user to a useful surface.
         return (
-          <PersonaSimplePage
-            title="Search"
-            description="Cross-workspace search palette opens with ⌘K."
+          <PersonaHome
+            recentThreads={recentThreads}
+            disabled={!connected}
+            onSubmit={(prompt, _mode, _attachments) => submitNewTask(prompt)}
+            onSelectThread={() => setView("thread")}
           />
         );
       case "thread":
@@ -252,6 +295,20 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
   return (
     <>
       <PersonaShell {...shellProps} />
+      {view === "search" ? (
+        <SearchPalette
+          threads={[]}
+          artifacts={[]}
+          memories={[]}
+          onClose={() => setView("home")}
+          onSelectThread={(id) => {
+            setView("thread");
+            void id;
+          }}
+          onSelectArtifact={() => setView("library")}
+          onSelectMemory={() => setView("learning")}
+        />
+      ) : null}
       {stuck && busy ? (
         <div className="persona-app__stuck" role="status">
           <span>
@@ -281,6 +338,99 @@ function PersonaSimplePage({ title, description }: { title: string; description:
         <h1>{title}</h1>
         <p className="persona-page__subtitle">{description}</p>
       </header>
+    </section>
+  );
+}
+
+interface LearningSuggestion {
+  id: string;
+  kind: "skill" | "rubric" | "prompt";
+  status: "pending" | "applied" | "rejected";
+  summary?: string;
+  name?: string;
+  rationale?: string;
+  confidence: number;
+}
+
+function LearningPanel() {
+  const [suggestions, setSuggestions] = useState<LearningSuggestion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch("/learning/pending")
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = (await res.json()) as { suggestions?: LearningSuggestion[] };
+        if (!cancelled) setSuggestions(body.suggestions ?? []);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function decide(id: string, decision: "applied" | "rejected") {
+    try {
+      await fetch("/learning/decisions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, decision })
+      });
+      setSuggestions((prev) => prev.map((s) => (s.id === id ? { ...s, status: decision } : s)));
+    } catch {
+      // best-effort; user can retry
+    }
+  }
+
+  const pending = suggestions.filter((s) => s.status === "pending");
+
+  return (
+    <section className="persona-page persona-learning" aria-label="Learning">
+      <header className="persona-page__header">
+        <h1>Learning</h1>
+        <p className="persona-page__subtitle">
+          Pending lessons your agent has captured. Approve them to update its persona.
+        </p>
+      </header>
+      {loading ? <p className="persona-page__empty">Loading…</p> : null}
+      {error ? (
+        <p className="persona-page__error" role="alert">
+          Couldn’t load suggestions yet. The agent will surface them as it runs.
+        </p>
+      ) : null}
+      {!loading && !error && pending.length === 0 ? (
+        <p className="persona-page__empty">
+          No pending lessons yet. After a few task runs, the agent will propose skills, rubrics, and
+          prompt edits here.
+        </p>
+      ) : null}
+      <ul className="persona-learning__list">
+        {pending.map((s) => (
+          <li key={s.id} className="persona-learning__row">
+            <div className="persona-learning__row-text">
+              <span className="persona-learning__kind">{s.kind}</span>
+              <strong>{s.name ?? s.summary ?? "Suggested change"}</strong>
+              {s.rationale ? <small>{s.rationale}</small> : null}
+            </div>
+            <div className="persona-learning__row-actions">
+              <button type="button" onClick={() => decide(s.id, "applied")}>
+                Accept
+              </button>
+              <button type="button" onClick={() => decide(s.id, "rejected")} className="ghost">
+                Reject
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

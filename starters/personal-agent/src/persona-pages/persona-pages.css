@@ -1781,6 +1781,107 @@
   background: rgba(255, 255, 255, 0.32);
 }
 
+/* === Learning panel (deployed-agent side) ================================= */
+
+.persona-learning {
+  max-width: 760px;
+}
+
+.persona-learning__list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+}
+
+.persona-learning__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--persona-line, rgba(21, 23, 22, 0.08));
+  border-radius: 12px;
+  background: var(--persona-surface, white);
+}
+
+.persona-learning__row-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.persona-learning__row-text strong {
+  font-size: 0.95rem;
+  color: var(--persona-ink, #15151a);
+}
+
+.persona-learning__row-text small {
+  color: var(--persona-ink-soft, #2f2f37);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.persona-learning__kind {
+  display: inline-flex;
+  align-self: start;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(58, 91, 215, 0.1);
+  color: var(--persona-accent, #3a5bd7);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.persona-learning__row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.persona-learning__row-actions button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--persona-accent, #3a5bd7);
+  color: white;
+  font: inherit;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.persona-learning__row-actions button.ghost {
+  background: transparent;
+  color: var(--persona-ink-soft, #2f2f37);
+  border: 1px solid var(--persona-line, rgba(21, 23, 22, 0.08));
+}
+
+.persona-page__error {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(180, 59, 53, 0.06);
+  color: var(--persona-ink-soft, #2f2f37);
+  font-size: 0.86rem;
+}
+
+.persona-page__empty {
+  margin: 12px 0;
+  color: var(--persona-muted, #5e5e66);
+  font-size: 0.92rem;
+}
+
+@media (max-width: 720px) {
+  .persona-learning__row {
+    grid-template-columns: 1fr;
+  }
+  .persona-learning__row-actions {
+    justify-content: flex-end;
+  }
+}
+
 /* === Responsive ============================================================ */
 
 @media (max-width: 720px) {

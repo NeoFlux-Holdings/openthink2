@@ -944,6 +944,11 @@ import { PersonaShell, type PersonaArtifact, type PersonaThreadSummary } from ".
 import { PersonaHome, type PersonaRecentThread } from "./persona-pages/persona-home";
 import { PersonaThreadFeed } from "./persona-pages/persona-thread-feed";
 import { PersonaComposer } from "./persona-pages/persona-composer";
+import { LibraryPage } from "./persona-pages/library-page";
+import { SkillsPage } from "./persona-pages/skills-page";
+import { SettingsPage, defaultPersonaSettings, type PersonaSettings } from "./persona-pages/settings-page";
+import { SearchPalette } from "./persona-pages/search-palette";
+import { builtinSkillPacks, flattenPacks, type Skill } from "./skills";
 
 export type PersonaView = "home" | "thread" | "library" | "learning" | "skills" | "settings" | "search";
 
@@ -965,6 +970,39 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
   const [recentThreads, setRecentThreads] = useState<PersonaRecentThread[]>([]);
   const lastSubmitRef = useRef<{ text: string; at: number } | null>(null);
 
+  // Persisted-in-memory persona settings. The deployed agent will pick
+  // up changes for the duration of the session; durable persistence to
+  // the orchestrator's DO is a follow-up.
+  const [personaSettings, setPersonaSettings] = useState<PersonaSettings>(defaultPersonaSettings);
+  const updatePersonaSettings = useCallback((patch: Partial<PersonaSettings>) => {
+    setPersonaSettings((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  // Skills come from the bundled registry (Cloudflare pack preloaded).
+  // Manual toggle / pin lives in component state for now; durable
+  // persistence is a follow-up.
+  const [skillOverrides, setSkillOverrides] = useState<Record<string, { enabled?: boolean; pinned?: boolean }>>({});
+  const allSkills = useMemo<Skill[]>(() => {
+    const flat = flattenPacks(builtinSkillPacks);
+    return flat.map((skill) => {
+      const override = skillOverrides[skill.id];
+      if (!override) return skill;
+      return {
+        ...skill,
+        enabled: override.enabled ?? skill.enabled,
+        pinned: override.pinned ?? skill.pinned
+      };
+    });
+  }, [skillOverrides]);
+  const activeSkills = useMemo(() => allSkills.filter((s) => s.enabled), [allSkills]);
+  const pendingSkills = useMemo(() => allSkills.filter((s) => !s.enabled), [allSkills]);
+  const toggleSkill = useCallback((id: string, enabled: boolean) => {
+    setSkillOverrides((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), enabled } }));
+  }, []);
+  const pinSkill = useCallback((id: string, pinned: boolean) => {
+    setSkillOverrides((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), pinned } }));
+  }, []);
+
   const agent = useAgent({
     agent: "PersonalChatAgent",
     name: DEFAULT_THREAD_ID
@@ -981,7 +1019,11 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
     isServerStreaming
   } = useAgentChat({
     agent,
-    autoContinueAfterToolResult: false,
+    // Persona's normie default: feed every tool result back to the
+    // model so the assistant produces a final answer without manual
+    // continuation. The legacy chat (?shell=legacy) keeps the
+    // per-tool approval flow for power users.
+    autoContinueAfterToolResult: true,
     resume: false
   });
 
@@ -1082,38 +1124,39 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
           />
         );
       case "library":
-        return (
-          <PersonaSimplePage
-            title="Library"
-            description="Every artifact your agent has produced will be browsable here."
-          />
-        );
+        // LibraryPage owns its own narrower PersonaArtifact union (no
+        // "diff" kind). Once we wire real artifact extraction in
+        // PersonaApp we'll project shell-shaped artifacts into the
+        // library shape here.
+        return <LibraryPage artifacts={[]} />;
       case "learning":
-        return (
-          <PersonaSimplePage
-            title="Learning"
-            description="Pending lessons your agent has captured. Approve them to update its persona."
-          />
-        );
+        return <LearningPanel />;
       case "skills":
         return (
-          <PersonaSimplePage
-            title="Skills"
-            description="Built-in and installed skills your agent can call."
+          <SkillsPage
+            activeSkills={activeSkills}
+            pendingSkills={pendingSkills}
+            onToggleSkill={toggleSkill}
+            onPinSkill={pinSkill}
           />
         );
       case "settings":
         return (
-          <PersonaSimplePage
-            title="Settings"
-            description="Model, approvals, training mode, and other preferences."
+          <SettingsPage
+            settings={personaSettings}
+            onUpdate={updatePersonaSettings}
           />
         );
       case "search":
+        // Search opens as a modal overlay rather than a routed page.
+        // Show the home screen behind the palette so dismissing returns
+        // the user to a useful surface.
         return (
-          <PersonaSimplePage
-            title="Search"
-            description="Cross-workspace search palette opens with ⌘K."
+          <PersonaHome
+            recentThreads={recentThreads}
+            disabled={!connected}
+            onSubmit={(prompt, _mode, _attachments) => submitNewTask(prompt)}
+            onSelectThread={() => setView("thread")}
           />
         );
       case "thread":
@@ -1168,6 +1211,20 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
   return (
     <>
       <PersonaShell {...shellProps} />
+      {view === "search" ? (
+        <SearchPalette
+          threads={[]}
+          artifacts={[]}
+          memories={[]}
+          onClose={() => setView("home")}
+          onSelectThread={(id) => {
+            setView("thread");
+            void id;
+          }}
+          onSelectArtifact={() => setView("library")}
+          onSelectMemory={() => setView("learning")}
+        />
+      ) : null}
       {stuck && busy ? (
         <div className="persona-app__stuck" role="status">
           <span>
@@ -1197,6 +1254,99 @@ function PersonaSimplePage({ title, description }: { title: string; description:
         <h1>{title}</h1>
         <p className="persona-page__subtitle">{description}</p>
       </header>
+    </section>
+  );
+}
+
+interface LearningSuggestion {
+  id: string;
+  kind: "skill" | "rubric" | "prompt";
+  status: "pending" | "applied" | "rejected";
+  summary?: string;
+  name?: string;
+  rationale?: string;
+  confidence: number;
+}
+
+function LearningPanel() {
+  const [suggestions, setSuggestions] = useState<LearningSuggestion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch("/learning/pending")
+      .then(async (res) => {
+        if (!res.ok) throw new Error(\`HTTP \${res.status}\`);
+        const body = (await res.json()) as { suggestions?: LearningSuggestion[] };
+        if (!cancelled) setSuggestions(body.suggestions ?? []);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function decide(id: string, decision: "applied" | "rejected") {
+    try {
+      await fetch("/learning/decisions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, decision })
+      });
+      setSuggestions((prev) => prev.map((s) => (s.id === id ? { ...s, status: decision } : s)));
+    } catch {
+      // best-effort; user can retry
+    }
+  }
+
+  const pending = suggestions.filter((s) => s.status === "pending");
+
+  return (
+    <section className="persona-page persona-learning" aria-label="Learning">
+      <header className="persona-page__header">
+        <h1>Learning</h1>
+        <p className="persona-page__subtitle">
+          Pending lessons your agent has captured. Approve them to update its persona.
+        </p>
+      </header>
+      {loading ? <p className="persona-page__empty">Loading…</p> : null}
+      {error ? (
+        <p className="persona-page__error" role="alert">
+          Couldn’t load suggestions yet. The agent will surface them as it runs.
+        </p>
+      ) : null}
+      {!loading && !error && pending.length === 0 ? (
+        <p className="persona-page__empty">
+          No pending lessons yet. After a few task runs, the agent will propose skills, rubrics, and
+          prompt edits here.
+        </p>
+      ) : null}
+      <ul className="persona-learning__list">
+        {pending.map((s) => (
+          <li key={s.id} className="persona-learning__row">
+            <div className="persona-learning__row-text">
+              <span className="persona-learning__kind">{s.kind}</span>
+              <strong>{s.name ?? s.summary ?? "Suggested change"}</strong>
+              {s.rationale ? <small>{s.rationale}</small> : null}
+            </div>
+            <div className="persona-learning__row-actions">
+              <button type="button" onClick={() => decide(s.id, "applied")}>
+                Accept
+              </button>
+              <button type="button" onClick={() => decide(s.id, "rejected")} className="ghost">
+                Reject
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -2312,6 +2462,1041 @@ export function PersonaComposer(props: PersonaComposerProps): ReactNode {
       </div>
     </form>
   );
+}
+`;
+
+// === Source: starters/personal-agent/src/persona-pages/library-page.tsx ===
+export const PERSONA_LIBRARY_PAGE_TSX = `/**
+ * Library page — grid view of every artifact in the workspace, with
+ * fuzzy substring search and quick filters across type / source / age.
+ *
+ * Mounts inside the Persona shell when the user clicks 📚 Library.
+ * Decoupled from \`persona-shell.tsx\` via a local \`PersonaArtifact\`
+ * shape so the page can also be rendered standalone in tests / Storybook.
+ */
+import { useMemo, useState, type ChangeEvent } from "react";
+
+export type LibraryArtifactKind =
+  | "document"
+  | "browser"
+  | "webpage"
+  | "slides"
+  | "table"
+  | "image"
+  | "code"
+  | "chart";
+
+export type LibraryArtifactSource = "agent" | "user" | "import" | "tool";
+
+export interface PersonaArtifact {
+  id: string;
+  kind: LibraryArtifactKind;
+  title: string;
+  version: number;
+  updatedAt: string;
+  source?: LibraryArtifactSource;
+  thumbnail?: string;
+  summary?: string;
+}
+
+export type LibraryAgeBucket = "all" | "today" | "week" | "month" | "older";
+
+export interface LibraryFilters {
+  query: string;
+  kind: LibraryArtifactKind | "all";
+  source: LibraryArtifactSource | "all";
+  age: LibraryAgeBucket;
+}
+
+export interface LibraryPageProps {
+  artifacts: PersonaArtifact[];
+  onOpenArtifact?: (id: string) => void;
+}
+
+const KIND_OPTIONS: ReadonlyArray<LibraryArtifactKind | "all"> = [
+  "all",
+  "document",
+  "browser",
+  "webpage",
+  "slides",
+  "table",
+  "image",
+  "code",
+  "chart"
+];
+
+const SOURCE_OPTIONS: ReadonlyArray<LibraryArtifactSource | "all"> = [
+  "all",
+  "agent",
+  "user",
+  "import",
+  "tool"
+];
+
+const AGE_OPTIONS: ReadonlyArray<LibraryAgeBucket> = ["all", "today", "week", "month", "older"];
+
+function kindIcon(kind: LibraryArtifactKind): string {
+  switch (kind) {
+    case "document":
+      return "▤";
+    case "browser":
+      return "◷";
+    case "webpage":
+      return "▢";
+    case "slides":
+      return "◫";
+    case "table":
+      return "▦";
+    case "image":
+      return "◳";
+    case "code":
+      return "❮❯";
+    case "chart":
+      return "▲";
+  }
+}
+
+export function bucketFor(updatedAt: string, now: number = Date.now()): LibraryAgeBucket {
+  const then = Date.parse(updatedAt);
+  if (Number.isNaN(then)) return "older";
+  const ageMs = now - then;
+  const day = 86_400_000;
+  if (ageMs < day) return "today";
+  if (ageMs < 7 * day) return "week";
+  if (ageMs < 30 * day) return "month";
+  return "older";
+}
+
+export function filterArtifacts(
+  artifacts: PersonaArtifact[],
+  filters: LibraryFilters,
+  now: number = Date.now()
+): PersonaArtifact[] {
+  const q = filters.query.trim().toLowerCase();
+  return artifacts.filter((artifact) => {
+    if (filters.kind !== "all" && artifact.kind !== filters.kind) return false;
+    if (filters.source !== "all" && (artifact.source ?? "agent") !== filters.source) return false;
+    if (filters.age !== "all" && bucketFor(artifact.updatedAt, now) !== filters.age) return false;
+    if (q.length === 0) return true;
+    const hay = \`\${artifact.title} \${artifact.summary ?? ""} \${artifact.kind}\`.toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+export function LibraryPage(props: LibraryPageProps) {
+  const [filters, setFilters] = useState<LibraryFilters>({
+    query: "",
+    kind: "all",
+    source: "all",
+    age: "all"
+  });
+
+  const filtered = useMemo(
+    () => filterArtifacts(props.artifacts, filters),
+    [props.artifacts, filters]
+  );
+
+  const update =
+    <K extends keyof LibraryFilters>(key: K) =>
+    (event: ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
+      setFilters((prev) => ({ ...prev, [key]: event.target.value as LibraryFilters[K] }));
+    };
+
+  return (
+    <section className="persona-page persona-library" aria-label="Library">
+      <header className="persona-page__header">
+        <h1>Library</h1>
+        <p className="persona-page__subtitle">
+          Every artifact your agent has produced — searchable, filterable, replayable.
+        </p>
+      </header>
+
+      <div className="persona-library__toolbar">
+        <input
+          type="search"
+          className="persona-library__search"
+          placeholder="Search title, summary, kind…"
+          value={filters.query}
+          onChange={update("query")}
+          aria-label="Search artifacts"
+        />
+        <FilterSelect label="Type" value={filters.kind} options={KIND_OPTIONS} onChange={update("kind")} />
+        <FilterSelect label="Source" value={filters.source} options={SOURCE_OPTIONS} onChange={update("source")} />
+        <FilterSelect label="Age" value={filters.age} options={AGE_OPTIONS} onChange={update("age")} />
+      </div>
+
+      <div className="persona-library__meta">
+        <span>{filtered.length} of {props.artifacts.length} shown</span>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="persona-library__empty">
+          <p>No artifacts match these filters yet.</p>
+        </div>
+      ) : (
+        <ul className="persona-library__grid">
+          {filtered.map((artifact) => (
+            <li key={artifact.id}>
+              <button
+                type="button"
+                className="persona-library__card"
+                onClick={() => props.onOpenArtifact?.(artifact.id)}
+              >
+                <header>
+                  <span className="persona-library__kind">{kindIcon(artifact.kind)}</span>
+                  <strong>{artifact.title}</strong>
+                  <span className="persona-library__version">v{artifact.version}</span>
+                </header>
+                <p className="persona-library__summary">
+                  {artifact.summary ?? \`\${artifact.kind} · updated \${artifact.updatedAt}\`}
+                </p>
+                <footer>
+                  <span>{artifact.source ?? "agent"}</span>
+                  <span>{artifact.updatedAt}</span>
+                </footer>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+interface FilterSelectProps<T extends string> {
+  label: string;
+  value: T;
+  options: ReadonlyArray<T>;
+  onChange: (event: ChangeEvent<HTMLSelectElement>) => void;
+}
+
+function FilterSelect<T extends string>(props: FilterSelectProps<T>) {
+  return (
+    <label className="persona-library__filter">
+      <span>{props.label}</span>
+      <select value={props.value} onChange={props.onChange}>
+        {props.options.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+`;
+
+// === Source: starters/personal-agent/src/persona-pages/skills-page.tsx ===
+export const PERSONA_SKILLS_PAGE_TSX = `/**
+ * Skills page — built-in / active / pending tabs over the skill registry.
+ *
+ * Each skill row exposes:
+ *   - an enable/disable toggle that fires \`onToggleSkill(id, enabled)\`
+ *   - a pin button that fires \`onPinSkill(id, pinned)\`
+ *
+ * Reads the static built-in packs from \`../skills\` but lets the parent
+ * pass in *runtime* skill state for the Active and Pending tabs — these
+ * live in Durable Object storage and are sourced via the SkillStore.
+ */
+import { useMemo, useState } from "react";
+import { builtinSkillPacks, flattenPacks, type Skill, type SkillPack } from "../skills";
+
+export type SkillsTabId = "builtin" | "active" | "pending";
+
+export interface SkillsPageProps {
+  activeSkills: Skill[];
+  pendingSkills: Skill[];
+  onToggleSkill: (skillId: string, enabled: boolean) => void;
+  onPinSkill: (skillId: string, pinned: boolean) => void;
+  initialTab?: SkillsTabId;
+}
+
+const TABS: ReadonlyArray<{ id: SkillsTabId; label: string }> = [
+  { id: "builtin", label: "Built-in" },
+  { id: "active", label: "Active" },
+  { id: "pending", label: "Pending" }
+];
+
+export function SkillsPage(props: SkillsPageProps) {
+  const [tab, setTab] = useState<SkillsTabId>(props.initialTab ?? "builtin");
+
+  const builtinFlat = useMemo(() => flattenPacks(builtinSkillPacks), []);
+
+  const counts = useMemo(
+    () => ({
+      builtin: builtinFlat.length,
+      active: props.activeSkills.length,
+      pending: props.pendingSkills.length
+    }),
+    [builtinFlat, props.activeSkills, props.pendingSkills]
+  );
+
+  return (
+    <section className="persona-page persona-skills" aria-label="Skills">
+      <header className="persona-page__header">
+        <h1>Skills</h1>
+        <p className="persona-page__subtitle">
+          Reusable units of agent know-how — system prompt snippets, tool bindings, playbooks.
+        </p>
+      </header>
+
+      <div className="persona-skills__tabs" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={\`persona-skills__tab\${tab === t.id ? " is-active" : ""}\`}
+            onClick={() => setTab(t.id)}
+          >
+            <span>{t.label}</span>
+            <span className="persona-skills__count">{counts[t.id]}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="persona-skills__body">
+        {tab === "builtin" && (
+          <BuiltinList
+            packs={builtinSkillPacks}
+            onToggleSkill={props.onToggleSkill}
+            onPinSkill={props.onPinSkill}
+          />
+        )}
+        {tab === "active" && (
+          <FlatList
+            skills={props.activeSkills}
+            emptyText="No skills active yet. Enable a built-in pack to get started."
+            onToggleSkill={props.onToggleSkill}
+            onPinSkill={props.onPinSkill}
+          />
+        )}
+        {tab === "pending" && (
+          <FlatList
+            skills={props.pendingSkills}
+            emptyText="No pending suggestions. The training loop will surface candidate skills here."
+            onToggleSkill={props.onToggleSkill}
+            onPinSkill={props.onPinSkill}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+interface ListSharedProps {
+  onToggleSkill: (skillId: string, enabled: boolean) => void;
+  onPinSkill: (skillId: string, pinned: boolean) => void;
+}
+
+function BuiltinList(props: { packs: SkillPack[] } & ListSharedProps) {
+  return (
+    <div className="persona-skills__packs">
+      {props.packs.map((pack) => (
+        <section key={pack.id} className="persona-skills__pack">
+          <header>
+            <h2>{pack.label}</h2>
+            <p>{pack.description}</p>
+          </header>
+          <ul className="persona-skills__list">
+            {pack.skills.map((skill) => (
+              <SkillRow
+                key={skill.id}
+                skill={skill}
+                onToggleSkill={props.onToggleSkill}
+                onPinSkill={props.onPinSkill}
+              />
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function FlatList(
+  props: { skills: Skill[]; emptyText: string } & ListSharedProps
+) {
+  if (props.skills.length === 0) {
+    return <div className="persona-skills__empty">{props.emptyText}</div>;
+  }
+  return (
+    <ul className="persona-skills__list">
+      {props.skills.map((skill) => (
+        <SkillRow
+          key={skill.id}
+          skill={skill}
+          onToggleSkill={props.onToggleSkill}
+          onPinSkill={props.onPinSkill}
+        />
+      ))}
+    </ul>
+  );
+}
+
+interface SkillRowProps extends ListSharedProps {
+  skill: Skill;
+}
+
+function SkillRow({ skill, onToggleSkill, onPinSkill }: SkillRowProps) {
+  return (
+    <li className="persona-skills__row">
+      <div className="persona-skills__row-main">
+        <div className="persona-skills__row-head">
+          <strong>{skill.name}</strong>
+          <span className="persona-skills__source">{skill.source}</span>
+        </div>
+        <p>{skill.description}</p>
+        {skill.tags.length > 0 && (
+          <div className="persona-skills__tags">
+            {skill.tags.map((tag) => (
+              <span key={tag} className="persona-skills__tag">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="persona-skills__row-actions">
+        <button
+          type="button"
+          className={\`persona-skills__pin\${skill.pinned ? " is-active" : ""}\`}
+          onClick={() => onPinSkill(skill.id, !skill.pinned)}
+          aria-pressed={skill.pinned}
+          aria-label={skill.pinned ? "Unpin skill" : "Pin skill"}
+          title={skill.pinned ? "Unpin" : "Pin"}
+        >
+          {skill.pinned ? "★" : "☆"}
+        </button>
+        <label className="persona-skills__toggle">
+          <input
+            type="checkbox"
+            checked={skill.enabled}
+            onChange={(event) => onToggleSkill(skill.id, event.target.checked)}
+          />
+          <span>{skill.enabled ? "On" : "Off"}</span>
+        </label>
+      </div>
+    </li>
+  );
+}
+`;
+
+// === Source: starters/personal-agent/src/persona-pages/settings-page.tsx ===
+export const PERSONA_SETTINGS_PAGE_TSX = `/**
+ * Settings page — controls for the Persona shell's "Advanced" surface.
+ *
+ * Every field is fully controlled. Changes flow up through \`onUpdate\`
+ * as a partial patch so the parent reducer can decide whether to persist
+ * locally, sync to the Durable Object, or both.
+ *
+ * Sections:
+ *   - Model picker (workers-ai / openrouter / anthropic / openai)
+ *   - Extended thinking toggle + budget slider (1k–32k tokens)
+ *   - Approval mode (full-auto / smart-auto / manual) + spend cap
+ *   - Code-mode policy (off / assisted / always)
+ *   - Training mode (off / review / auto-evolve)
+ */
+import { useId, type ChangeEvent } from "react";
+
+export const modelProviders = ["workers-ai", "openrouter", "anthropic", "openai"] as const;
+export type ModelProvider = (typeof modelProviders)[number];
+
+export const approvalModeOptions = ["full-auto", "smart-auto", "manual"] as const;
+export type SettingsApprovalMode = (typeof approvalModeOptions)[number];
+
+export const codeModePolicies = ["off", "assisted", "always"] as const;
+export type CodeModePolicy = (typeof codeModePolicies)[number];
+
+export const trainingModes = ["off", "review", "auto-evolve"] as const;
+export type TrainingMode = (typeof trainingModes)[number];
+
+/**
+ * Execution lanes — which surfaces the orchestrator may dispatch tools
+ * through. Multiple may be active simultaneously. "in-worker" is always
+ * on (the orchestrator's own McpAgent sub-agents). The other two are
+ * advanced toggles. See \`executor.ts\` and \`smithery.ts\`.
+ */
+export const executionLanes = ["in-worker", "executor.sh", "smithery"] as const;
+export type ExecutionLane = (typeof executionLanes)[number];
+
+export interface PersonaSettings {
+  modelProvider: ModelProvider;
+  extendedThinking: boolean;
+  thinkingBudgetTokens: number;
+  approvalMode: SettingsApprovalMode;
+  spendCapUsd: number;
+  codeModePolicy: CodeModePolicy;
+  trainingMode: TrainingMode;
+  executionLanes: ExecutionLane[];
+  smitheryApiKey: string;
+  executorWorkosToken: string;
+  voiceEnabled: boolean;
+  voiceSilenceThreshold: number;
+  voiceSilenceDurationMs: number;
+  voiceInterruptThreshold: number;
+}
+
+export const defaultPersonaSettings: PersonaSettings = {
+  modelProvider: "anthropic",
+  extendedThinking: true,
+  thinkingBudgetTokens: 8_000,
+  approvalMode: "smart-auto",
+  spendCapUsd: 5,
+  codeModePolicy: "assisted",
+  trainingMode: "review",
+  executionLanes: ["in-worker"],
+  smitheryApiKey: "",
+  executorWorkosToken: "",
+  voiceEnabled: false,
+  voiceSilenceThreshold: 0.04,
+  voiceSilenceDurationMs: 500,
+  voiceInterruptThreshold: 0.05
+};
+
+export const THINKING_BUDGET_MIN = 1_000;
+export const THINKING_BUDGET_MAX = 32_000;
+export const THINKING_BUDGET_STEP = 500;
+
+export interface SettingsPageProps {
+  settings: PersonaSettings;
+  onUpdate: (patch: Partial<PersonaSettings>) => void;
+}
+
+/**
+ * Build a single-key patch suitable for the \`onUpdate\` callback. Extracted
+ * so unit tests can verify shape without rendering React; the input handlers
+ * below call into this when constructing their patches.
+ */
+export function buildSettingsPatch<K extends keyof PersonaSettings>(
+  key: K,
+  value: PersonaSettings[K]
+): Partial<PersonaSettings> {
+  return { [key]: value } as Partial<PersonaSettings>;
+}
+
+export function SettingsPage({ settings, onUpdate }: SettingsPageProps) {
+  const baseId = useId();
+  const ids = {
+    model: useId(),
+    thinking: useId(),
+    budget: useId(),
+    approval: useId(),
+    spend: useId(),
+    code: useId(),
+    train: useId()
+  };
+
+  const onSelectChange =
+    <K extends keyof PersonaSettings>(key: K) =>
+    (event: ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
+      onUpdate(buildSettingsPatch(key, event.target.value as PersonaSettings[K]));
+    };
+
+  const onCheckboxChange =
+    <K extends keyof PersonaSettings>(key: K) =>
+    (event: ChangeEvent<HTMLInputElement>) => {
+      onUpdate(buildSettingsPatch(key, event.target.checked as PersonaSettings[K]));
+    };
+
+  const onNumberChange =
+    <K extends keyof PersonaSettings>(key: K) =>
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const value = Number(event.target.value);
+      if (Number.isFinite(value)) {
+        onUpdate(buildSettingsPatch(key, value as PersonaSettings[K]));
+      }
+    };
+
+  return (
+    <section className="persona-page persona-settings" aria-label="Settings">
+      <header className="persona-page__header">
+        <h1>Settings</h1>
+        <p className="persona-page__subtitle">
+          Advanced controls. Most users can leave the defaults alone — change one knob at a time.
+        </p>
+      </header>
+
+      <div className="persona-settings__group">
+        <h2>Model</h2>
+        <label className="persona-settings__field" htmlFor={ids.model}>
+          <span>Provider</span>
+          <select
+            id={ids.model}
+            value={settings.modelProvider}
+            onChange={onSelectChange("modelProvider")}
+          >
+            {modelProviders.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="persona-settings__group">
+        <h2>Reasoning</h2>
+        <label className="persona-settings__field persona-settings__field--inline" htmlFor={ids.thinking}>
+          <input
+            id={ids.thinking}
+            type="checkbox"
+            checked={settings.extendedThinking}
+            onChange={onCheckboxChange("extendedThinking")}
+          />
+          <span>Extended thinking</span>
+        </label>
+        <label className="persona-settings__field" htmlFor={ids.budget}>
+          <span>
+            Thinking budget · <strong>{settings.thinkingBudgetTokens.toLocaleString()} tokens</strong>
+          </span>
+          <input
+            id={ids.budget}
+            type="range"
+            min={THINKING_BUDGET_MIN}
+            max={THINKING_BUDGET_MAX}
+            step={THINKING_BUDGET_STEP}
+            value={settings.thinkingBudgetTokens}
+            disabled={!settings.extendedThinking}
+            onChange={onNumberChange("thinkingBudgetTokens")}
+          />
+        </label>
+      </div>
+
+      <div className="persona-settings__group">
+        <h2>Approvals</h2>
+        <label className="persona-settings__field" htmlFor={ids.approval}>
+          <span>Approval mode</span>
+          <select
+            id={ids.approval}
+            value={settings.approvalMode}
+            onChange={onSelectChange("approvalMode")}
+          >
+            {approvalModeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="persona-settings__field" htmlFor={ids.spend}>
+          <span>Spend cap (USD)</span>
+          <input
+            id={ids.spend}
+            type="number"
+            min={0}
+            step={0.5}
+            value={settings.spendCapUsd}
+            onChange={onNumberChange("spendCapUsd")}
+          />
+        </label>
+      </div>
+
+      <div className="persona-settings__group">
+        <h2>Code mode</h2>
+        <fieldset className="persona-settings__radios">
+          <legend>How aggressively to use sandboxed code execution.</legend>
+          {codeModePolicies.map((option) => (
+            <label key={option} className="persona-settings__radio">
+              <input
+                type="radio"
+                name={ids.code}
+                value={option}
+                checked={settings.codeModePolicy === option}
+                onChange={onSelectChange("codeModePolicy")}
+              />
+              <span>{option}</span>
+            </label>
+          ))}
+        </fieldset>
+      </div>
+
+      <div className="persona-settings__group">
+        <h2>Training</h2>
+        <fieldset className="persona-settings__radios">
+          <legend>How the agent learns from completed runs.</legend>
+          {trainingModes.map((option) => (
+            <label key={option} className="persona-settings__radio">
+              <input
+                type="radio"
+                name={ids.train}
+                value={option}
+                checked={settings.trainingMode === option}
+                onChange={onSelectChange("trainingMode")}
+              />
+              <span>{option}</span>
+            </label>
+          ))}
+        </fieldset>
+      </div>
+
+      <div className="persona-settings__section">
+        <header>
+          <h3>Execution lanes</h3>
+          <p>Where the orchestrator dispatches tool calls. The in-worker lane is always on; the others are advanced toggles.</p>
+        </header>
+        <fieldset className="persona-settings__checkboxes">
+          <legend>Active lanes</legend>
+          {executionLanes.map((lane) => (
+            <label key={lane}>
+              <input
+                type="checkbox"
+                checked={settings.executionLanes.includes(lane)}
+                disabled={lane === "in-worker"}
+                onChange={(event) => {
+                  const next = event.target.checked
+                    ? Array.from(new Set([...settings.executionLanes, lane]))
+                    : settings.executionLanes.filter((l) => l !== lane);
+                  onUpdate(buildSettingsPatch("executionLanes", next));
+                }}
+              />
+              <span>{lane}</span>
+            </label>
+          ))}
+        </fieldset>
+        {settings.executionLanes.includes("smithery") && (
+          <div className="persona-settings__field">
+            <label htmlFor={\`\${baseId}-smithery-key\`}>Smithery API key</label>
+            <input
+              id={\`\${baseId}-smithery-key\`}
+              type="password"
+              value={settings.smitheryApiKey}
+              onChange={(event) =>
+                onUpdate(buildSettingsPatch("smitheryApiKey", event.target.value))
+              }
+              placeholder="sm_…"
+              autoComplete="off"
+            />
+            <small>Stored as the OPEN_THINK_SMITHERY_API_KEY Worker secret. Used to mount registry servers as MCP clients.</small>
+          </div>
+        )}
+        {settings.executionLanes.includes("executor.sh") && (
+          <div className="persona-settings__field">
+            <label htmlFor={\`\${baseId}-executor-token\`}>executor.sh WorkOS token</label>
+            <input
+              id={\`\${baseId}-executor-token\`}
+              type="password"
+              value={settings.executorWorkosToken}
+              onChange={(event) =>
+                onUpdate(buildSettingsPatch("executorWorkosToken", event.target.value))
+              }
+              placeholder="ws_…"
+              autoComplete="off"
+            />
+            <small>Obtained by signing in at executor.sh. Stored as OPEN_THINK_EXECUTOR_WORKOS_TOKEN.</small>
+          </div>
+        )}
+      </div>
+
+      <div className="persona-settings__section">
+        <header>
+          <h3>Voice</h3>
+          <p>Talk to your agent. Mic stays disabled until you grant permission; the WebSocket only opens once permission is granted (Agents SDK v0.12.4 connection control).</p>
+        </header>
+        <label className="persona-settings__toggle">
+          <input
+            type="checkbox"
+            checked={settings.voiceEnabled}
+            onChange={(event) =>
+              onUpdate(buildSettingsPatch("voiceEnabled", event.target.checked))
+            }
+          />
+          <span>Enable voice console</span>
+        </label>
+        {settings.voiceEnabled && (
+          <div className="persona-settings__voice-tuning">
+            <label className="persona-settings__field">
+              <span>Silence threshold</span>
+              <input
+                type="range"
+                min={0}
+                max={0.5}
+                step={0.01}
+                value={settings.voiceSilenceThreshold}
+                onChange={(event) =>
+                  onUpdate(
+                    buildSettingsPatch(
+                      "voiceSilenceThreshold",
+                      Number.parseFloat(event.target.value)
+                    )
+                  )
+                }
+              />
+              <small>{settings.voiceSilenceThreshold.toFixed(2)} — lower = pickier mic.</small>
+            </label>
+            <label className="persona-settings__field">
+              <span>End turn after silence (ms)</span>
+              <input
+                type="range"
+                min={100}
+                max={3000}
+                step={50}
+                value={settings.voiceSilenceDurationMs}
+                onChange={(event) =>
+                  onUpdate(
+                    buildSettingsPatch(
+                      "voiceSilenceDurationMs",
+                      Number.parseInt(event.target.value, 10)
+                    )
+                  )
+                }
+              />
+              <small>{settings.voiceSilenceDurationMs} ms</small>
+            </label>
+            <label className="persona-settings__field">
+              <span>Interrupt threshold</span>
+              <input
+                type="range"
+                min={0}
+                max={0.5}
+                step={0.01}
+                value={settings.voiceInterruptThreshold}
+                onChange={(event) =>
+                  onUpdate(
+                    buildSettingsPatch(
+                      "voiceInterruptThreshold",
+                      Number.parseFloat(event.target.value)
+                    )
+                  )
+                }
+              />
+              <small>{settings.voiceInterruptThreshold.toFixed(2)} — how loud you have to talk to barge in.</small>
+            </label>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+`;
+
+// === Source: starters/personal-agent/src/persona-pages/search-palette.tsx ===
+export const PERSONA_SEARCH_PALETTE_TSX = `/**
+ * Search palette — global cmd+K surface with Threads / Artifacts / Memories
+ * tabs. Empty-query view groups threads by age. Case-insensitive substring
+ * match (no external fuzzy lib). Keyboard: ↑ ↓ navigate, Enter open, Tab
+ * cycle, Esc close.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+
+export type SearchTab = "threads" | "artifacts" | "memories";
+export type AgeBucket = "week" | "month" | "older";
+
+export interface SearchThreadHit { id: string; title: string; updatedAt: string; agentName: string }
+export interface SearchArtifactHit { id: string; title: string; kind: string; updatedAt: string }
+export interface SearchMemoryHit { id: string; body: string; updatedAt: string }
+
+export interface SearchPaletteProps {
+  threads: SearchThreadHit[];
+  artifacts: SearchArtifactHit[];
+  memories: SearchMemoryHit[];
+  onClose: () => void;
+  onSelectThread: (id: string) => void;
+  onSelectArtifact: (id: string) => void;
+  onSelectMemory: (id: string) => void;
+  initialTab?: SearchTab;
+}
+
+const TABS: ReadonlyArray<{ id: SearchTab; label: string }> = [
+  { id: "threads", label: "Threads" },
+  { id: "artifacts", label: "Artifacts" },
+  { id: "memories", label: "Memories" }
+];
+
+export function ageBucket(updatedAt: string, now: number = Date.now()): AgeBucket {
+  const then = Date.parse(updatedAt);
+  if (Number.isNaN(then)) return "older";
+  const day = 86_400_000;
+  const ageMs = now - then;
+  if (ageMs < 7 * day) return "week";
+  if (ageMs < 30 * day) return "month";
+  return "older";
+}
+
+export function matchesQuery(haystack: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return q.length === 0 || haystack.toLowerCase().includes(q);
+}
+
+export const filterThreads = (items: SearchThreadHit[], q: string) =>
+  items.filter((t) => matchesQuery(\`\${t.title} \${t.agentName}\`, q));
+export const filterArtifacts = (items: SearchArtifactHit[], q: string) =>
+  items.filter((a) => matchesQuery(\`\${a.title} \${a.kind}\`, q));
+export const filterMemories = (items: SearchMemoryHit[], q: string) =>
+  items.filter((m) => matchesQuery(m.body, q));
+
+export function groupByAge<T extends { updatedAt: string }>(items: T[], now: number = Date.now()) {
+  const groups = { week: [] as T[], month: [] as T[], older: [] as T[] };
+  for (const item of items) groups[ageBucket(item.updatedAt, now)].push(item);
+  return groups;
+}
+
+export function SearchPalette(props: SearchPaletteProps) {
+  const [tab, setTab] = useState<SearchTab>(props.initialTab ?? "threads");
+  const [query, setQuery] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const results = useMemo(() => {
+    if (tab === "threads") return filterThreads(props.threads, query);
+    if (tab === "artifacts") return filterArtifacts(props.artifacts, query);
+    return filterMemories(props.memories, query);
+  }, [tab, query, props.threads, props.artifacts, props.memories]);
+
+  useEffect(() => {
+    setCursor(0);
+  }, [tab, query]);
+
+  const activate = useCallback(
+    (index: number) => {
+      const item = results[index];
+      if (!item) return;
+      if (tab === "threads") props.onSelectThread(item.id);
+      else if (tab === "artifacts") props.onSelectArtifact(item.id);
+      else props.onSelectMemory(item.id);
+    },
+    [results, tab, props]
+  );
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      props.onClose();
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setCursor((c) => Math.min(c + 1, Math.max(results.length - 1, 0)));
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setCursor((c) => Math.max(c - 1, 0));
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      activate(cursor);
+      return;
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const i = TABS.findIndex((t) => t.id === tab);
+      const next = TABS[(i + (event.shiftKey ? -1 : 1) + TABS.length) % TABS.length];
+      if (next) setTab(next.id);
+    }
+  };
+
+  return (
+    <div className="persona-search" role="dialog" aria-modal="true" aria-label="Global search" onKeyDown={onKeyDown}>
+      <div className="persona-search__backdrop" onClick={props.onClose} />
+      <div className="persona-search__panel">
+        <input
+          ref={inputRef}
+          className="persona-search__input"
+          type="search"
+          placeholder="Search threads, artifacts, memories…"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <div className="persona-search__tabs" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              className={\`persona-search__tab\${tab === t.id ? " is-active" : ""}\`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="persona-search__results">
+          {results.length === 0 ? (
+            <div className="persona-search__empty">No matches.</div>
+          ) : tab === "threads" && query.trim() === "" ? (
+            <GroupedThreads groups={groupByAge(results as SearchThreadHit[])} cursor={cursor} onPick={activate} />
+          ) : (
+            <FlatResults items={results} tab={tab} cursor={cursor} onPick={activate} />
+          )}
+        </div>
+        <footer className="persona-search__footer">
+          <span>↑ ↓ navigate</span>
+          <span>↵ open</span>
+          <span>Tab cycle</span>
+          <span>Esc close</span>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function GroupedThreads(props: {
+  groups: { week: SearchThreadHit[]; month: SearchThreadHit[]; older: SearchThreadHit[] };
+  cursor: number;
+  onPick: (index: number) => void;
+}) {
+  const labels = { week: "Past week", month: "Past month", older: "Older" } as const;
+  let i = -1;
+  return (
+    <div className="persona-search__groups">
+      {(["week", "month", "older"] as const).map((bucket) => {
+        const items = props.groups[bucket];
+        if (items.length === 0) return null;
+        return (
+          <section key={bucket}>
+            <header>{labels[bucket]}</header>
+            <ul>
+              {items.map((t) => {
+                const index = ++i;
+                return (
+                  <li key={t.id} className={\`persona-search__row\${index === props.cursor ? " is-active" : ""}\`}>
+                    <button type="button" onClick={() => props.onPick(index)}>
+                      <strong>{t.title}</strong>
+                      <span>{t.agentName} · {t.updatedAt}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function FlatResults(props: {
+  items: SearchThreadHit[] | SearchArtifactHit[] | SearchMemoryHit[];
+  tab: SearchTab;
+  cursor: number;
+  onPick: (index: number) => void;
+}) {
+  return (
+    <ul className="persona-search__list">
+      {props.items.map((item, index) => (
+        <li key={item.id} className={\`persona-search__row\${index === props.cursor ? " is-active" : ""}\`}>
+          <button type="button" onClick={() => props.onPick(index)}>
+            <strong>{renderTitle(item, props.tab)}</strong>
+            <span>{item.updatedAt}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function renderTitle(item: SearchThreadHit | SearchArtifactHit | SearchMemoryHit, tab: SearchTab): string {
+  if (tab === "threads") return (item as SearchThreadHit).title;
+  if (tab === "artifacts") return (item as SearchArtifactHit).title;
+  return (item as SearchMemoryHit).body.slice(0, 80);
 }
 `;
 
@@ -4217,6 +5402,107 @@ export const PERSONA_PAGES_CSS = `/*
 
 .persona-app__stuck button:hover {
   background: rgba(255, 255, 255, 0.32);
+}
+
+/* === Learning panel (deployed-agent side) ================================= */
+
+.persona-learning {
+  max-width: 760px;
+}
+
+.persona-learning__list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+}
+
+.persona-learning__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--persona-line, rgba(21, 23, 22, 0.08));
+  border-radius: 12px;
+  background: var(--persona-surface, white);
+}
+
+.persona-learning__row-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.persona-learning__row-text strong {
+  font-size: 0.95rem;
+  color: var(--persona-ink, #15151a);
+}
+
+.persona-learning__row-text small {
+  color: var(--persona-ink-soft, #2f2f37);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.persona-learning__kind {
+  display: inline-flex;
+  align-self: start;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(58, 91, 215, 0.1);
+  color: var(--persona-accent, #3a5bd7);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.persona-learning__row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.persona-learning__row-actions button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--persona-accent, #3a5bd7);
+  color: white;
+  font: inherit;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.persona-learning__row-actions button.ghost {
+  background: transparent;
+  color: var(--persona-ink-soft, #2f2f37);
+  border: 1px solid var(--persona-line, rgba(21, 23, 22, 0.08));
+}
+
+.persona-page__error {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(180, 59, 53, 0.06);
+  color: var(--persona-ink-soft, #2f2f37);
+  font-size: 0.86rem;
+}
+
+.persona-page__empty {
+  margin: 12px 0;
+  color: var(--persona-muted, #5e5e66);
+  font-size: 0.92rem;
+}
+
+@media (max-width: 720px) {
+  .persona-learning__row {
+    grid-template-columns: 1fr;
+  }
+  .persona-learning__row-actions {
+    justify-content: flex-end;
+  }
 }
 
 /* === Responsive ============================================================ */
