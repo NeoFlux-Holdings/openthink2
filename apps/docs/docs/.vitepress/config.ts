@@ -26,6 +26,7 @@ export default defineConfig({
         items: [
           { text: "Orchestrator & Sub-agents", link: "/guide/orchestrator-and-subagents" },
           { text: "Skills, Approval, Code-mode", link: "/guide/skills-and-approval" },
+          { text: "Persona Shell (UI)", link: "/guide/persona-shell" },
           { text: "Hosted Cloud Agent", link: "/guide/hosted-cloud-agent" },
           { text: "Effect Executor", link: "/guide/effect-executor" }
         ]

@@ -1,0 +1,414 @@
+/*
+ * Persona shell styles — three-column grid, modern and quiet, designed
+ * to work with the openthink2 platform palette already present in
+ * apps/platform/src/app/globals.css. Self-contained: only references
+ * CSS custom properties through fallbacks so the shell renders
+ * standalone if dropped into a different page.
+ */
+
+.persona-shell {
+  --persona-sidebar: 220px;
+  --persona-thread: minmax(360px, 0.9fr);
+  --persona-canvas: minmax(420px, 1.4fr);
+  --persona-bg: var(--surface, #f5f5f4);
+  --persona-surface: var(--surface-strong, #ffffff);
+  --persona-line: var(--line, rgba(21, 23, 22, 0.08));
+  --persona-line-strong: var(--line-strong, rgba(21, 23, 22, 0.18));
+  --persona-ink: var(--ink, #15151a);
+  --persona-ink-soft: var(--ink-soft, #2f2f37);
+  --persona-muted: var(--muted, #5e5e66);
+  --persona-accent: var(--accent, #3a5bd7);
+  --persona-green: var(--green, #176f49);
+  --persona-radius: 12px;
+
+  display: grid;
+  grid-template-columns: var(--persona-sidebar) var(--persona-thread) var(--persona-canvas);
+  grid-template-rows: 100vh;
+  width: 100vw;
+  max-width: 100%;
+  background: var(--persona-bg);
+  color: var(--persona-ink);
+  font-family: inherit;
+}
+
+.persona-shell__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 12px;
+  border-right: 1px solid var(--persona-line);
+  background: var(--persona-surface);
+  overflow-y: auto;
+}
+
+.persona-shell__brand {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px 4px;
+}
+
+.persona-shell__brand strong {
+  font-size: 0.95rem;
+}
+
+.persona-shell__brand small {
+  color: var(--persona-muted);
+  font-size: 0.72rem;
+}
+
+.persona-shell__nav {
+  display: grid;
+  gap: 4px;
+}
+
+.persona-shell__nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--persona-ink-soft);
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.persona-shell__nav-item:hover {
+  background: rgba(21, 23, 22, 0.04);
+}
+
+.persona-shell__nav-item--primary {
+  background: var(--persona-accent);
+  color: white;
+  font-weight: 600;
+}
+
+.persona-shell__nav-item--primary:hover {
+  background: var(--persona-accent);
+  filter: brightness(1.05);
+}
+
+.persona-shell__nav-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(21, 23, 22, 0.08);
+  color: var(--persona-ink-soft);
+}
+
+.persona-shell__nav-item--primary .persona-shell__nav-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.persona-shell__divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--persona-line);
+}
+
+.persona-shell__recent {
+  display: grid;
+  gap: 6px;
+  padding: 0 4px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.persona-shell__recent header {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--persona-muted);
+  padding: 4px 6px;
+}
+
+.persona-shell__recent ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.persona-shell__thread {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: var(--persona-ink-soft);
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  font-size: 0.84rem;
+}
+
+.persona-shell__thread:hover {
+  background: rgba(21, 23, 22, 0.04);
+}
+
+.persona-shell__thread.is-active {
+  background: rgba(58, 91, 215, 0.08);
+  color: var(--persona-ink);
+}
+
+.persona-shell__thread-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.persona-shell__thread-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.persona-shell__thread-meta {
+  font-size: 0.7rem;
+  color: var(--persona-muted);
+}
+
+.persona-shell__settings {
+  margin-top: auto;
+}
+
+/* === Center column: thread feed ============================================ */
+
+.persona-shell__thread:has(> .persona-shell__working-doc) {
+  /* the thread feed column container — keep no extra rules here */
+}
+
+/* The actual center column. Selector chained with the column's wrapper. */
+.persona-shell > .persona-shell__thread {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: var(--persona-bg);
+  border-right: 1px solid var(--persona-line);
+  min-height: 0;
+}
+
+.persona-shell__working-doc {
+  margin: 14px 18px 0;
+  padding: 10px 14px;
+  border: 1px dashed var(--persona-line-strong);
+  border-radius: var(--persona-radius);
+  background: rgba(255, 255, 255, 0.6);
+  display: grid;
+  gap: 3px;
+}
+
+.persona-shell__working-doc strong {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--persona-muted);
+}
+
+.persona-shell__working-doc span {
+  font-size: 0.88rem;
+  color: var(--persona-ink-soft);
+  line-height: 1.4;
+}
+
+.persona-shell__thread-feed {
+  overflow-y: auto;
+  padding: 16px 18px;
+  min-height: 0;
+}
+
+.persona-shell__composer {
+  border-top: 1px solid var(--persona-line);
+  padding: 12px 18px;
+  background: var(--persona-surface);
+}
+
+/* === Right column: artifact canvas ========================================= */
+
+.persona-shell__canvas {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: var(--persona-surface);
+  min-height: 0;
+}
+
+.persona-shell__canvas-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--persona-line);
+}
+
+.persona-shell__windowing {
+  display: inline-flex;
+  border: 1px solid var(--persona-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.persona-shell__win-btn {
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--persona-ink-soft);
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.persona-shell__win-btn:hover {
+  background: rgba(21, 23, 22, 0.05);
+}
+
+.persona-shell__win-btn.is-active {
+  background: rgba(58, 91, 215, 0.1);
+  color: var(--persona-accent);
+}
+
+.persona-shell__canvas-body {
+  overflow: auto;
+  padding: 16px;
+  min-height: 0;
+}
+
+.persona-shell__canvas-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--persona-muted);
+  font-size: 0.92rem;
+  padding: 24px;
+  text-align: center;
+}
+
+.persona-shell__artifacts {
+  display: grid;
+  gap: 16px;
+}
+
+.persona-shell__artifacts--single {
+  grid-template-columns: 1fr;
+}
+
+.persona-shell__artifacts--grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.persona-shell__artifacts--stack {
+  grid-template-columns: 1fr;
+  /* future: snap-scroll for carousel; out of scope for the skeleton */
+}
+
+.persona-artifact {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border: 1px solid var(--persona-line);
+  border-radius: var(--persona-radius);
+  background: white;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.persona-artifact.is-active {
+  border-color: rgba(58, 91, 215, 0.36);
+}
+
+.persona-artifact > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--persona-line);
+  background: rgba(21, 23, 22, 0.02);
+}
+
+.persona-artifact__kind {
+  font-size: 1.05rem;
+}
+
+.persona-artifact h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.persona-artifact__version {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--persona-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.persona-artifact__placeholder {
+  display: grid;
+  place-items: center;
+  padding: 32px 24px;
+  color: var(--persona-muted);
+  font-size: 0.86rem;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.persona-shell__thumbnails {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--persona-line);
+  overflow-x: auto;
+  background: rgba(21, 23, 22, 0.02);
+}
+
+.persona-shell__thumbnail {
+  display: inline-grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--persona-line);
+  border-radius: 8px;
+  background: white;
+  font-size: 0.78rem;
+  color: var(--persona-ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.persona-shell__thumbnail.is-active {
+  border-color: rgba(58, 91, 215, 0.4);
+  color: var(--persona-ink);
+}
+
+.persona-shell__thumbnail-kind {
+  font-size: 0.95rem;
+}
+
+@media (max-width: 1100px) {
+  .persona-shell {
+    grid-template-columns: var(--persona-sidebar) 1fr;
+    grid-template-rows: 100vh;
+  }
+  .persona-shell__canvas {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--persona-line);
+  }
+}
+
+@media (max-width: 720px) {
+  .persona-shell {
+    grid-template-columns: 1fr;
+  }
+  .persona-shell__sidebar {
+    display: none;
+  }
+}
