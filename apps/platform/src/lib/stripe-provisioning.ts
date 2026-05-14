@@ -13,13 +13,14 @@
  *   4. an Access self-hosted application locked to the Stripe payer
  *      email.
  *
- * Today this module is a typed scaffold — the actual partner-account
- * provisioning endpoint requires an approved Cloudflare partnership +
- * a Stripe Connect account; both are configured through env vars and
- * left as future wiring. The contract is exported so the
+ * The actual partner-account provisioning endpoint requires an approved
+ * Cloudflare partnership + a Stripe Connect account; both are configured
+ * through env vars. The contract is exported so the
  * `/api/deployment/stripe` route can plug in the real implementation
  * incrementally without changing the deploy flow type.
  */
+
+import { openThinkTokenPermissions } from "./cloudflare-token-url";
 
 export interface StripeCheckoutSession {
   id: string;
@@ -60,13 +61,21 @@ export function buildStripeProvisioningPlan(
   session: StripeCheckoutSession,
   agentSlug: string
 ): StripeProvisioningPlan {
+  const sharedInputs: Record<string, unknown> = {
+    sessionId: session.id,
+    ownerEmail: session.customerEmail,
+    agentSlug
+  };
+  if (session.customerName) sharedInputs.ownerName = session.customerName;
+  if (session.desiredDomain) sharedInputs.domain = session.desiredDomain;
+
   const steps: StripeProvisioningStep[] = [
     {
       kind: "create-cloudflare-account",
       label: "Create Cloudflare account",
       status: "pending",
       detail: `Create a Cloudflare account owned by ${session.customerEmail} via the Partner API.`,
-      inputs: { ownerEmail: session.customerEmail, ownerName: session.customerName }
+      inputs: { ...sharedInputs }
     }
   ];
   if (session.desiredDomain) {
@@ -76,14 +85,14 @@ export function buildStripeProvisioningPlan(
         label: `Register ${session.desiredDomain}`,
         status: "pending",
         detail: "Use the Cloudflare registrar API to register the requested domain.",
-        inputs: { domain: session.desiredDomain }
+        inputs: { ...sharedInputs }
       },
       {
         kind: "create-zone",
         label: `Add ${session.desiredDomain} as a zone`,
         status: "pending",
         detail: "Attach the new domain as a Cloudflare zone in the freshly-created account.",
-        inputs: { domain: session.desiredDomain }
+        inputs: { ...sharedInputs }
       }
     );
   }
@@ -93,20 +102,22 @@ export function buildStripeProvisioningPlan(
       label: "Issue scoped API token",
       status: "pending",
       detail:
-        "Create a Cloudflare API token in the new account with the openthink2 permission preset and store its fingerprint."
+        "Create a Cloudflare API token in the new account with the openthink2 permission preset and store its fingerprint.",
+      inputs: { ...sharedInputs }
     },
     {
       kind: "launch-agent",
       label: `Launch ${agentSlug}`,
       status: "pending",
-      detail: "Run the same deploy flow used in self-deploy — Workers / D1 / R2 / Vectorize / Queue."
+      detail: "Run the same deploy flow used in self-deploy — Workers / D1 / R2 / Vectorize / Queue.",
+      inputs: { ...sharedInputs }
     },
     {
       kind: "create-access-app",
       label: "Lock down with Cloudflare Access",
       status: "pending",
       detail: `Create a self-hosted Access app allowing only ${session.customerEmail}.`,
-      inputs: { ownerEmail: session.customerEmail }
+      inputs: { ...sharedInputs }
     }
   );
   const plan: StripeProvisioningPlan = {
@@ -240,18 +251,71 @@ export function createCloudflarePartnerStripeAdapter(
             break;
           }
           case "register-domain": {
-            // POST /accounts/{id}/registrar/domains — requires partner registrar access
-            output = { domain: step.inputs?.domain };
+            // POST /accounts/{id}/registrar/domains/{domain}/register
+            const accountId = String(step.inputs?.accountId ?? "");
+            const domain = String(step.inputs?.domain ?? "");
+            if (!accountId) throw new Error("register-domain requires a prior accountId");
+            if (!domain) throw new Error("register-domain requires a domain input");
+            const registerInit: { method: string; body: unknown; idempotencyKey?: string } = {
+              method: "POST",
+              body: { years: 1, auto_renew: true, privacy: true }
+            };
+            if (idemKey) registerInit.idempotencyKey = idemKey;
+            const result = await cf<{ id?: string; name?: string }>(
+              `/accounts/${accountId}/registrar/domains/${encodeURIComponent(domain)}/register`,
+              registerInit
+            );
+            output = {
+              domain: result.name ?? domain,
+              ...(result.id ? { domainId: result.id } : {})
+            };
             break;
           }
           case "create-zone": {
             // POST /zones
-            output = { zone: step.inputs?.domain };
+            const accountId = String(step.inputs?.accountId ?? "");
+            const domain = String(step.inputs?.domain ?? "");
+            if (!accountId) throw new Error("create-zone requires a prior accountId");
+            if (!domain) throw new Error("create-zone requires a domain input");
+            const zoneInit: { method: string; body: unknown; idempotencyKey?: string } = {
+              method: "POST",
+              body: { name: domain, account: { id: accountId }, type: "full" }
+            };
+            if (idemKey) zoneInit.idempotencyKey = idemKey;
+            const result = await cf<{ id: string; name: string; name_servers?: string[] }>(
+              "/zones",
+              zoneInit
+            );
+            output = {
+              zoneId: result.id,
+              zone: result.name,
+              ...(result.name_servers ? { nameservers: result.name_servers } : {})
+            };
             break;
           }
           case "issue-scoped-token": {
-            // POST /user/tokens (scoped to the new account)
-            output = { tokenIssued: true };
+            // POST /user/tokens scoped to the new account, using the
+            // openthink2 permission preset.
+            const accountId = String(step.inputs?.accountId ?? "");
+            if (!accountId) throw new Error("issue-scoped-token requires a prior accountId");
+            const resources: Record<string, string> = {
+              [`com.cloudflare.api.account.${accountId}`]: "*"
+            };
+            const policies = openThinkTokenPermissions.map((permission) => ({
+              effect: "allow" as const,
+              resources,
+              permission_groups: [{ name: permission.label }]
+            }));
+            const tokenInit: { method: string; body: unknown; idempotencyKey?: string } = {
+              method: "POST",
+              body: {
+                name: `openthink2 - ${step.inputs?.agentSlug ?? accountId}`,
+                policies
+              }
+            };
+            if (idemKey) tokenInit.idempotencyKey = idemKey;
+            const result = await cf<{ id: string; value: string }>("/user/tokens", tokenInit);
+            output = { apiToken: result.value, tokenId: result.id };
             break;
           }
           case "launch-agent": {
@@ -267,7 +331,41 @@ export function createCloudflarePartnerStripeAdapter(
           }
           case "create-access-app": {
             // POST /accounts/{account_id}/access/apps
-            output = { accessAppCreated: true };
+            const accountId = String(step.inputs?.accountId ?? "");
+            const ownerEmail = String(step.inputs?.ownerEmail ?? "");
+            const agentSlug = String(step.inputs?.agentSlug ?? "");
+            const domain = String(step.inputs?.domain ?? "");
+            if (!accountId) throw new Error("create-access-app requires a prior accountId");
+            if (!ownerEmail) throw new Error("create-access-app requires an ownerEmail");
+            if (!agentSlug) throw new Error("create-access-app requires an agentSlug");
+            if (!domain) throw new Error("create-access-app requires a domain");
+            const accessInit: { method: string; body: unknown; idempotencyKey?: string } = {
+              method: "POST",
+              body: {
+                name: `openthink2 - ${agentSlug}`,
+                domain: `${agentSlug}.${domain}`,
+                session_duration: "24h",
+                auto_redirect_to_identity: true,
+                policies: [
+                  {
+                    name: "Owner",
+                    decision: "allow",
+                    include: [{ email: { email: ownerEmail } }]
+                  }
+                ]
+              }
+            };
+            if (idemKey) accessInit.idempotencyKey = idemKey;
+            const result = await cf<{ id?: string; domain?: string; policies?: { id?: string }[] }>(
+              `/accounts/${accountId}/access/apps`,
+              accessInit
+            );
+            output = {
+              accessAppCreated: true,
+              ...(result.id ? { accessAppId: result.id } : {}),
+              ...(result.domain ? { accessDomain: result.domain } : {}),
+              ...(result.policies?.[0]?.id ? { accessPolicyId: result.policies[0].id } : {})
+            };
             break;
           }
         }
@@ -288,6 +386,57 @@ export function createCloudflarePartnerStripeAdapter(
         return { ...step, status: "error", detail: message };
       }
     }
+  };
+}
+
+/**
+ * Run a prepared provisioning plan in order, threading state between
+ * steps. Each step's resolved `inputs` (which include any outputs the
+ * adapter wrote back) become part of the shared bag fed to the next
+ * step. Stops on the first step that ends in `status === "error"` and
+ * returns the partially-executed plan so the caller can surface
+ * progress to the user / persist it for retry.
+ */
+export async function runPlan(
+  plan: StripeProvisioningPlan,
+  ctx: { adapter: StripeProvisioningAdapter }
+): Promise<{
+  plan: StripeProvisioningPlan;
+  ok: boolean;
+  error?: { step: StripeProvisioningStepKind; detail: string };
+}> {
+  let shared: Record<string, unknown> = {
+    sessionId: plan.sessionId,
+    ownerEmail: plan.customerEmail,
+    agentSlug: plan.agentName
+  };
+  if (plan.domain) shared.domain = plan.domain;
+
+  const executed: StripeProvisioningStep[] = [];
+  for (const step of plan.steps) {
+    const next: StripeProvisioningStep = {
+      ...step,
+      status: "active",
+      inputs: { ...shared, ...(step.inputs ?? {}) }
+    };
+    const result = await ctx.adapter.runStep(next);
+    executed.push(result);
+    if (result.status === "error") {
+      const updatedPlan: StripeProvisioningPlan = {
+        ...plan,
+        steps: [...executed, ...plan.steps.slice(executed.length)]
+      };
+      return {
+        plan: updatedPlan,
+        ok: false,
+        error: { step: result.kind, detail: result.detail }
+      };
+    }
+    shared = { ...shared, ...(result.inputs ?? {}) };
+  }
+  return {
+    plan: { ...plan, steps: executed },
+    ok: true
   };
 }
 

@@ -63,6 +63,10 @@ export function renderAgentsSdkPersonalAgentRuntime(
       contents: renderClientTsx(input)
     },
     {
+      path: "src/orchestrator-runtime.ts",
+      contents: renderOrchestratorRuntimeTs()
+    },
+    {
       path: "src/server.ts",
       contents: renderServerTs(input)
     }

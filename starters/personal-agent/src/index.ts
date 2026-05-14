@@ -19,6 +19,21 @@ import {
 import { CloudflareQueue, type QueueLike } from "@open-think/tasks";
 import { BrowserTerminalSession, localCloudflaredCommand } from "@open-think/terminal";
 
+export {
+  registerLearningRoutes,
+  respondLearning,
+  resultToResponse,
+  SUGGESTIONS_KEY as LEARNING_SUGGESTIONS_KEY,
+  type DecisionAction,
+  type DecisionRequest,
+  type DoStorageLike as LearningStorage,
+  type LearningHandler,
+  type LearningHandlerResult,
+  type LearningRouteRequest,
+  type LearningRouter,
+  type LearningSummary
+} from "./learning-routes";
+
 export type PersonalAgentCapability =
   | "chat"
   | "coding"
