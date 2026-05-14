@@ -44,6 +44,11 @@ import {
   type SkillStore
 } from "../skills";
 import {
+  buildSmitheryMountCalls,
+  createSmitheryStore,
+  type SmitheryStore
+} from "../smithery";
+import {
   createOrchestratorStore,
   type OrchestratorStateStore,
   wireOrchestratorMcpRpc,
@@ -78,6 +83,8 @@ export interface OrchestratorEnvBase {
   OPEN_THINK_WORKSPACE_ID?: string;
   OPEN_THINK_OWNER_EMAIL?: string;
   OPEN_THINK_TOOL_APPROVAL_POLICY?: string;
+  OPEN_THINK_SMITHERY_API_KEY?: string;
+  OPEN_THINK_SMITHERY_REGISTRY?: string;
   [key: string]: unknown;
 }
 
@@ -96,6 +103,7 @@ export interface OrchestratorRuntime<TEnv extends OrchestratorEnvBase> {
   approval: ReturnType<typeof createInMemoryApprovalStore>;
   codeMode: ReturnType<typeof createSandboxCodeModeRunner>;
   executor: ExecutorMcpServerConfig | null;
+  smithery: { store: SmitheryStore; mounted: string[] };
   goals: GoalStore;
   env: TEnv;
 }
@@ -147,6 +155,28 @@ export async function initOrchestrator<TEnv extends OrchestratorEnvBase>(
     addMcpServer: (name, binding) => agent.addMcpServer(name, binding)
   });
 
+  // Smithery — mount every enabled installation as an additional MCP
+  // server over Streamable HTTP. Stays empty when no API key is set.
+  const smitheryStore = createSmitheryStore(agent.ctx.storage);
+  const smitheryMounted: string[] = [];
+  if (env.OPEN_THINK_SMITHERY_API_KEY) {
+    const mountInput: { store: SmitheryStore; apiKey: string; registryBase?: string } = {
+      store: smitheryStore,
+      apiKey: env.OPEN_THINK_SMITHERY_API_KEY
+    };
+    if (env.OPEN_THINK_SMITHERY_REGISTRY) mountInput.registryBase = env.OPEN_THINK_SMITHERY_REGISTRY;
+    const calls = await buildSmitheryMountCalls(mountInput);
+    for (const call of calls) {
+      try {
+        await agent.addMcpServer(call.name, { url: call.url, headers: call.headers });
+        smitheryMounted.push(call.name);
+      } catch {
+        // Skip individual server failures so a broken Smithery
+        // installation doesn't take down the orchestrator at boot.
+      }
+    }
+  }
+
   const goals: GoalStore = {
     async list() {
       const ctx = await store.getContext();
@@ -158,7 +188,16 @@ export async function initOrchestrator<TEnv extends OrchestratorEnvBase>(
     }
   };
 
-  return { store, skills, approval, codeMode, executor, goals, env };
+  return {
+    store,
+    skills,
+    approval,
+    codeMode,
+    executor,
+    smithery: { store: smitheryStore, mounted: smitheryMounted },
+    goals,
+    env
+  };
 }
 
 /**

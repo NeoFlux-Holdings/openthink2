@@ -21,3 +21,5 @@ export * from "./skills";
 export * from "./approval";
 export * from "./code-mode";
 export * from "./executor";
+export * from "./smithery";
+export * from "./learning-routes";

@@ -193,15 +193,29 @@ LLM round trip. Configurable in three policies:
 See `starters/personal-agent/src/code-mode.ts` and the
 [`code-mode-mcp` blog post](https://blog.cloudflare.com/code-mode-mcp/).
 
-## executor.sh integration
+## Execution lanes — MCP servers the agent mounts
 
-The deployed agent can connect to the public executor.sh MCP gateway at
-`https://executor.sh/mcp` as an additional execution plane. Auth is a
-WorkOS Bearer JWT obtained through the executor web app and stored as
-`OPEN_THINK_EXECUTOR_WORKOS_TOKEN` on the Worker. The MCP client is in
-`starters/personal-agent/src/executor.ts`. Cloudflare Sandbox-GA remains the
-default; executor is opt-in for users who want the executor.sh tool surface
-alongside Sandbox.
+openthink2 mounts MCP servers from three classes of source. The
+orchestrator's LLM sees one merged tool surface regardless of which
+lane each tool came from.
+
+| Lane | Transport | Auth | Default |
+|------|-----------|------|---------|
+| **In-Worker McpAgents** | Durable Object RPC | none | on |
+| **executor.sh** | Streamable HTTP | WorkOS JWT | opt-in |
+| **Smithery** | Streamable HTTP | per-user API key | opt-in |
+
+The in-Worker lane is the openthink2 specialist sub-agents (coder,
+researcher, browser, …). [executor.sh](https://executor.sh) is a
+public cloud MCP gateway. [Smithery](https://smithery.ai) is the MCP
+server *registry* — 7,000+ pre-built servers (GitHub, Linear, Notion,
+Playwright, etc.) hosted by Smithery and mounted into your agent on
+demand. See `apps/docs/docs/guide/smithery.md` for the wiring details.
+
+User keys live in Worker secrets:
+
+- `OPEN_THINK_EXECUTOR_WORKOS_TOKEN` — executor.sh bearer
+- `OPEN_THINK_SMITHERY_API_KEY` — Smithery API key
 
 ## Skills, orchestrator, train mode, self-evolve
 

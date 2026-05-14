@@ -26,6 +26,15 @@ export type CodeModePolicy = (typeof codeModePolicies)[number];
 export const trainingModes = ["off", "review", "auto-evolve"] as const;
 export type TrainingMode = (typeof trainingModes)[number];
 
+/**
+ * Execution lanes — which surfaces the orchestrator may dispatch tools
+ * through. Multiple may be active simultaneously. "in-worker" is always
+ * on (the orchestrator's own McpAgent sub-agents). The other two are
+ * advanced toggles. See `executor.ts` and `smithery.ts`.
+ */
+export const executionLanes = ["in-worker", "executor.sh", "smithery"] as const;
+export type ExecutionLane = (typeof executionLanes)[number];
+
 export interface PersonaSettings {
   modelProvider: ModelProvider;
   extendedThinking: boolean;
@@ -34,6 +43,9 @@ export interface PersonaSettings {
   spendCapUsd: number;
   codeModePolicy: CodeModePolicy;
   trainingMode: TrainingMode;
+  executionLanes: ExecutionLane[];
+  smitheryApiKey: string;
+  executorWorkosToken: string;
 }
 
 export const defaultPersonaSettings: PersonaSettings = {
@@ -43,7 +55,10 @@ export const defaultPersonaSettings: PersonaSettings = {
   approvalMode: "smart-auto",
   spendCapUsd: 5,
   codeModePolicy: "assisted",
-  trainingMode: "review"
+  trainingMode: "review",
+  executionLanes: ["in-worker"],
+  smitheryApiKey: "",
+  executorWorkosToken: ""
 };
 
 export const THINKING_BUDGET_MIN = 1_000;
@@ -68,6 +83,7 @@ export function buildSettingsPatch<K extends keyof PersonaSettings>(
 }
 
 export function SettingsPage({ settings, onUpdate }: SettingsPageProps) {
+  const baseId = useId();
   const ids = {
     model: useId(),
     thinking: useId(),
@@ -219,6 +235,64 @@ export function SettingsPage({ settings, onUpdate }: SettingsPageProps) {
             </label>
           ))}
         </fieldset>
+      </div>
+
+      <div className="persona-settings__section">
+        <header>
+          <h3>Execution lanes</h3>
+          <p>Where the orchestrator dispatches tool calls. The in-worker lane is always on; the others are advanced toggles.</p>
+        </header>
+        <fieldset className="persona-settings__checkboxes">
+          <legend>Active lanes</legend>
+          {executionLanes.map((lane) => (
+            <label key={lane}>
+              <input
+                type="checkbox"
+                checked={settings.executionLanes.includes(lane)}
+                disabled={lane === "in-worker"}
+                onChange={(event) => {
+                  const next = event.target.checked
+                    ? Array.from(new Set([...settings.executionLanes, lane]))
+                    : settings.executionLanes.filter((l) => l !== lane);
+                  onUpdate(buildSettingsPatch("executionLanes", next));
+                }}
+              />
+              <span>{lane}</span>
+            </label>
+          ))}
+        </fieldset>
+        {settings.executionLanes.includes("smithery") && (
+          <div className="persona-settings__field">
+            <label htmlFor={`${baseId}-smithery-key`}>Smithery API key</label>
+            <input
+              id={`${baseId}-smithery-key`}
+              type="password"
+              value={settings.smitheryApiKey}
+              onChange={(event) =>
+                onUpdate(buildSettingsPatch("smitheryApiKey", event.target.value))
+              }
+              placeholder="sm_…"
+              autoComplete="off"
+            />
+            <small>Stored as the OPEN_THINK_SMITHERY_API_KEY Worker secret. Used to mount registry servers as MCP clients.</small>
+          </div>
+        )}
+        {settings.executionLanes.includes("executor.sh") && (
+          <div className="persona-settings__field">
+            <label htmlFor={`${baseId}-executor-token`}>executor.sh WorkOS token</label>
+            <input
+              id={`${baseId}-executor-token`}
+              type="password"
+              value={settings.executorWorkosToken}
+              onChange={(event) =>
+                onUpdate(buildSettingsPatch("executorWorkosToken", event.target.value))
+              }
+              placeholder="ws_…"
+              autoComplete="off"
+            />
+            <small>Obtained by signing in at executor.sh. Stored as OPEN_THINK_EXECUTOR_WORKOS_TOKEN.</small>
+          </div>
+        )}
       </div>
     </section>
   );
