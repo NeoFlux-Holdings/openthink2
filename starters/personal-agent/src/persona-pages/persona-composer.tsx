@@ -25,6 +25,10 @@ export interface PersonaComposerProps {
   placeholder?: string | undefined;
   costEstimate?: string | undefined;
   showCostEstimate?: boolean | undefined;
+  /** localStorage key for draft persistence. When set, the textarea
+   *  is rehydrated on mount and writes are mirrored on every change.
+   *  Cleared on successful submit. */
+  draftStorageKey?: string | undefined;
   onSubmit: (text: string, mode: PersonaComposeMode, attachments: File[]) => void;
   onStop?: (() => void) | undefined;
 }
@@ -37,16 +41,37 @@ export function PersonaComposer(props: PersonaComposerProps): ReactNode {
     placeholder = "Reply, or paste a URL, doc, or screenshot…",
     costEstimate,
     showCostEstimate = false,
+    draftStorageKey,
     onSubmit,
     onStop
   } = props;
 
-  const [text, setText] = useState("");
+  const [text, setText] = useState<string>(() => {
+    if (!draftStorageKey || typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(draftStorageKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [mode, setMode] = useState<PersonaComposeMode>(defaultMode);
   const [planActive, setPlanActive] = useState(defaultMode === "plan");
   const [attachments, setAttachments] = useState<File[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // Mirror text into localStorage as the user types so they can leave
+  // the thread, navigate to Library / Settings / etc., and come back to
+  // their draft intact.
+  useEffect(() => {
+    if (!draftStorageKey || typeof window === "undefined") return;
+    try {
+      if (text) window.localStorage.setItem(draftStorageKey, text);
+      else window.localStorage.removeItem(draftStorageKey);
+    } catch {
+      // ignore quota / private-browsing errors
+    }
+  }, [text, draftStorageKey]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -62,7 +87,14 @@ export function PersonaComposer(props: PersonaComposerProps): ReactNode {
     onSubmit(trimmed, planActive ? "plan" : mode, attachments);
     setText("");
     setAttachments([]);
-  }, [text, disabled, busy, mode, planActive, attachments, onSubmit]);
+    if (draftStorageKey && typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(draftStorageKey);
+      } catch {
+        // ignore
+      }
+    }
+  }, [text, disabled, busy, mode, planActive, attachments, onSubmit, draftStorageKey]);
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter") return;
@@ -90,12 +122,19 @@ export function PersonaComposer(props: PersonaComposerProps): ReactNode {
 
   return (
     <form
-      className="persona-composer"
+      className={`persona-composer${busy ? " is-busy" : ""}`}
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
+      {busy ? (
+        <div className="persona-composer__busy" aria-live="polite">
+          <span className="persona-composer__busy-dot" aria-hidden="true" />
+          <span>Agent is working — send is paused. Press Stop to interrupt.</span>
+        </div>
+      ) : null}
+
       {attachments.length > 0 && (
         <ul className="persona-composer__attachments" aria-label="Attached files">
           {attachments.map((file, index) => (
@@ -166,11 +205,13 @@ export function PersonaComposer(props: PersonaComposerProps): ReactNode {
           {busy && onStop ? (
             <button
               type="button"
-              className="persona-composer__send is-stop"
+              className="persona-composer__stop"
               onClick={onStop}
               aria-label="Stop generation"
+              title="Stop the agent"
             >
-              ◼
+              <span className="persona-composer__stop-glyph" aria-hidden="true">■</span>
+              <span className="persona-composer__stop-label">Stop</span>
             </button>
           ) : (
             <button
