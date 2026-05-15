@@ -5146,8 +5146,36 @@ export default {
       if (binding) {
         const id = binding.idFromName("default");
         const stub = binding.get(id);
-        return stub.fetch(request);
+        const response = await stub.fetch(request);
+        const headers = new Headers(response.headers);
+        headers.set("X-OpenThink-Routed", "orchestrator");
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers
+        });
       }
+      // ORCHESTRATOR binding missing — return an empty success payload
+      // so the Persona UI shows an empty state instead of a 404 error.
+      const empty =
+        url.pathname.endsWith("/pending")
+          ? { suggestions: [] }
+          : url.pathname.endsWith("/decisions")
+            ? { decisions: [] }
+            : url.pathname === "/invocations"
+              ? { invocations: [] }
+              : url.pathname === "/knowledge"
+                ? { entries: [] }
+                : url.pathname === "/goals"
+                  ? { goals: [] }
+                  : { ok: false, reason: "ORCHESTRATOR binding missing" };
+      return new Response(JSON.stringify(empty), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "X-OpenThink-Routed": "orchestrator-missing"
+        }
+      });
     }
 
     if (url.pathname === "/health") {

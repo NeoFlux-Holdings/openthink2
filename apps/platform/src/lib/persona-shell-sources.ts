@@ -1121,6 +1121,7 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
           <PersonaHome
             recentThreads={recentThreads}
             disabled={!connected}
+            draftStorageKey="openthink:persona:home-draft"
             onSubmit={(prompt, _mode, _attachments) => submitNewTask(prompt)}
             onSelectThread={() => setView("thread")}
           />
@@ -1184,6 +1185,7 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
     busy,
     disabled: !connected,
     showCostEstimate,
+    draftStorageKey: "openthink:persona:thread-draft",
     onSubmit: (text: string) => submitNewTask(text)
   };
   if (showCostEstimate) composerProps.costEstimate = "~$0.04";
@@ -1427,6 +1429,11 @@ export interface PersonaHomeProps {
   templates?: PersonaTemplate[] | undefined;
   defaultMode?: PersonaComposeMode | undefined;
   disabled?: boolean | undefined;
+  /** localStorage key for textarea draft persistence. When set, the
+   *  textarea is rehydrated on mount and writes mirror to the same
+   *  key, so navigating to Library / Skills / Settings and returning
+   *  keeps the draft. Cleared on successful submit. */
+  draftStorageKey?: string | undefined;
   onSubmit: (prompt: string, mode: PersonaComposeMode, attachments: File[]) => void;
   onSelectThread?: ((id: string) => void) | undefined;
 }
@@ -1535,15 +1542,35 @@ export function PersonaHome(props: PersonaHomeProps): ReactNode {
     templates = DEFAULT_TEMPLATES,
     defaultMode = "auto",
     disabled = false,
+    draftStorageKey,
     onSubmit,
     onSelectThread
   } = props;
 
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState<string>(() => {
+    if (!draftStorageKey || typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(draftStorageKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [mode, setMode] = useState<PersonaComposeMode>(defaultMode);
   const [attachments, setAttachments] = useState<File[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Persist draft across navigations so jumping to Library / Settings
+  // and back doesn't lose what the user was typing.
+  useEffect(() => {
+    if (!draftStorageKey || typeof window === "undefined") return;
+    try {
+      if (prompt) window.localStorage.setItem(draftStorageKey, prompt);
+      else window.localStorage.removeItem(draftStorageKey);
+    } catch {
+      // ignore
+    }
+  }, [prompt, draftStorageKey]);
 
   // Auto-grow the textarea up to a sensible max height.
   useEffect(() => {
@@ -1560,7 +1587,14 @@ export function PersonaHome(props: PersonaHomeProps): ReactNode {
     onSubmit(trimmed, mode, attachments);
     setPrompt("");
     setAttachments([]);
-  }, [prompt, mode, attachments, disabled, onSubmit]);
+    if (draftStorageKey && typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(draftStorageKey);
+      } catch {
+        // ignore
+      }
+    }
+  }, [prompt, mode, attachments, disabled, onSubmit, draftStorageKey]);
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter") return;
@@ -2347,6 +2381,10 @@ export interface PersonaComposerProps {
   placeholder?: string | undefined;
   costEstimate?: string | undefined;
   showCostEstimate?: boolean | undefined;
+  /** localStorage key for draft persistence. When set, the textarea
+   *  is rehydrated on mount and writes are mirrored on every change.
+   *  Cleared on successful submit. */
+  draftStorageKey?: string | undefined;
   onSubmit: (text: string, mode: PersonaComposeMode, attachments: File[]) => void;
   onStop?: (() => void) | undefined;
 }
@@ -2359,16 +2397,37 @@ export function PersonaComposer(props: PersonaComposerProps): ReactNode {
     placeholder = "Reply, or paste a URL, doc, or screenshot…",
     costEstimate,
     showCostEstimate = false,
+    draftStorageKey,
     onSubmit,
     onStop
   } = props;
 
-  const [text, setText] = useState("");
+  const [text, setText] = useState<string>(() => {
+    if (!draftStorageKey || typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(draftStorageKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [mode, setMode] = useState<PersonaComposeMode>(defaultMode);
   const [planActive, setPlanActive] = useState(defaultMode === "plan");
   const [attachments, setAttachments] = useState<File[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // Mirror text into localStorage as the user types so they can leave
+  // the thread, navigate to Library / Settings / etc., and come back to
+  // their draft intact.
+  useEffect(() => {
+    if (!draftStorageKey || typeof window === "undefined") return;
+    try {
+      if (text) window.localStorage.setItem(draftStorageKey, text);
+      else window.localStorage.removeItem(draftStorageKey);
+    } catch {
+      // ignore quota / private-browsing errors
+    }
+  }, [text, draftStorageKey]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -2384,7 +2443,14 @@ export function PersonaComposer(props: PersonaComposerProps): ReactNode {
     onSubmit(trimmed, planActive ? "plan" : mode, attachments);
     setText("");
     setAttachments([]);
-  }, [text, disabled, busy, mode, planActive, attachments, onSubmit]);
+    if (draftStorageKey && typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(draftStorageKey);
+      } catch {
+        // ignore
+      }
+    }
+  }, [text, disabled, busy, mode, planActive, attachments, onSubmit, draftStorageKey]);
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter") return;
@@ -2412,12 +2478,19 @@ export function PersonaComposer(props: PersonaComposerProps): ReactNode {
 
   return (
     <form
-      className="persona-composer"
+      className={\`persona-composer\${busy ? " is-busy" : ""}\`}
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
+      {busy ? (
+        <div className="persona-composer__busy" aria-live="polite">
+          <span className="persona-composer__busy-dot" aria-hidden="true" />
+          <span>Agent is working — send is paused. Press Stop to interrupt.</span>
+        </div>
+      ) : null}
+
       {attachments.length > 0 && (
         <ul className="persona-composer__attachments" aria-label="Attached files">
           {attachments.map((file, index) => (
@@ -2488,11 +2561,13 @@ export function PersonaComposer(props: PersonaComposerProps): ReactNode {
           {busy && onStop ? (
             <button
               type="button"
-              className="persona-composer__send is-stop"
+              className="persona-composer__stop"
               onClick={onStop}
               aria-label="Stop generation"
+              title="Stop the agent"
             >
-              ◼
+              <span className="persona-composer__stop-glyph" aria-hidden="true">■</span>
+              <span className="persona-composer__stop-label">Stop</span>
             </button>
           ) : (
             <button
@@ -5386,6 +5461,64 @@ export const PERSONA_PAGES_CSS = `/*
 
 .persona-composer__send.is-stop {
   background: rgba(225, 29, 72, 0.9);
+}
+
+.persona-composer__busy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(58, 91, 215, 0.08);
+  color: var(--persona-accent, #3a5bd7);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.persona-composer__busy-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--persona-accent, #3a5bd7);
+  animation: persona-bubble-pulse 1.1s ease-in-out infinite;
+}
+
+.persona-composer.is-busy .persona-composer__input {
+  opacity: 0.8;
+}
+
+.persona-composer__stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 38px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(225, 29, 72, 0.92);
+  color: white;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(225, 29, 72, 0.18);
+}
+
+.persona-composer__stop:hover {
+  background: rgb(208, 24, 65);
+}
+
+.persona-composer__stop-glyph {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .persona-composer__busy-dot {
+    animation: none;
+  }
 }
 
 /* === Persona App error toast =============================================== */

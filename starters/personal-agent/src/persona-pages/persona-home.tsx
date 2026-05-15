@@ -55,6 +55,11 @@ export interface PersonaHomeProps {
   templates?: PersonaTemplate[] | undefined;
   defaultMode?: PersonaComposeMode | undefined;
   disabled?: boolean | undefined;
+  /** localStorage key for textarea draft persistence. When set, the
+   *  textarea is rehydrated on mount and writes mirror to the same
+   *  key, so navigating to Library / Skills / Settings and returning
+   *  keeps the draft. Cleared on successful submit. */
+  draftStorageKey?: string | undefined;
   onSubmit: (prompt: string, mode: PersonaComposeMode, attachments: File[]) => void;
   onSelectThread?: ((id: string) => void) | undefined;
 }
@@ -163,15 +168,35 @@ export function PersonaHome(props: PersonaHomeProps): ReactNode {
     templates = DEFAULT_TEMPLATES,
     defaultMode = "auto",
     disabled = false,
+    draftStorageKey,
     onSubmit,
     onSelectThread
   } = props;
 
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState<string>(() => {
+    if (!draftStorageKey || typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(draftStorageKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [mode, setMode] = useState<PersonaComposeMode>(defaultMode);
   const [attachments, setAttachments] = useState<File[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Persist draft across navigations so jumping to Library / Settings
+  // and back doesn't lose what the user was typing.
+  useEffect(() => {
+    if (!draftStorageKey || typeof window === "undefined") return;
+    try {
+      if (prompt) window.localStorage.setItem(draftStorageKey, prompt);
+      else window.localStorage.removeItem(draftStorageKey);
+    } catch {
+      // ignore
+    }
+  }, [prompt, draftStorageKey]);
 
   // Auto-grow the textarea up to a sensible max height.
   useEffect(() => {
@@ -188,7 +213,14 @@ export function PersonaHome(props: PersonaHomeProps): ReactNode {
     onSubmit(trimmed, mode, attachments);
     setPrompt("");
     setAttachments([]);
-  }, [prompt, mode, attachments, disabled, onSubmit]);
+    if (draftStorageKey && typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(draftStorageKey);
+      } catch {
+        // ignore
+      }
+    }
+  }, [prompt, mode, attachments, disabled, onSubmit, draftStorageKey]);
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter") return;

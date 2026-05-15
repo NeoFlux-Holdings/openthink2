@@ -205,6 +205,7 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
           <PersonaHome
             recentThreads={recentThreads}
             disabled={!connected}
+            draftStorageKey="openthink:persona:home-draft"
             onSubmit={(prompt, _mode, _attachments) => submitNewTask(prompt)}
             onSelectThread={() => setView("thread")}
           />
@@ -268,6 +269,7 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
     busy,
     disabled: !connected,
     showCostEstimate,
+    draftStorageKey: "openthink:persona:thread-draft",
     onSubmit: (text: string) => submitNewTask(text)
   };
   if (showCostEstimate) composerProps.costEstimate = "~$0.04";
