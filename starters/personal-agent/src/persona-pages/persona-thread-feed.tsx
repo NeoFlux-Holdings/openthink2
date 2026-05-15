@@ -56,6 +56,9 @@ export interface PersonaThreadFeedProps {
   onSelectFollowUp?: ((text: string) => void) | undefined;
   onOpenArtifact?: ((toolName: string, toolCallId: string | undefined) => void) | undefined;
   onMessageAction?: ((action: PersonaMessageAction, messageId: string) => void) | undefined;
+  /** Called when the user approves or denies a tool that requires
+   *  approval. `approvalId` is the `getToolApproval(part).id`. */
+  onApproveTool?: ((approvalId: string, approved: boolean) => void) | undefined;
 }
 
 export type PersonaMessageAction =
@@ -86,7 +89,8 @@ export function PersonaThreadFeed(props: PersonaThreadFeedProps): ReactNode {
     onTitleChange,
     onSelectFollowUp,
     onOpenArtifact,
-    onMessageAction
+    onMessageAction,
+    onApproveTool
   } = props;
 
   const [editing, setEditing] = useState(false);
@@ -228,6 +232,7 @@ export function PersonaThreadFeed(props: PersonaThreadFeedProps): ReactNode {
               busy={busy && message === visible[visible.length - 1]}
               onOpenArtifact={onOpenArtifact}
               onAction={onMessageAction}
+              onApproveTool={onApproveTool}
             />
           ))
         )}
@@ -262,9 +267,10 @@ interface MessageBubbleProps {
   busy: boolean;
   onOpenArtifact?: ((toolName: string, toolCallId: string | undefined) => void) | undefined;
   onAction?: ((action: PersonaMessageAction, messageId: string) => void) | undefined;
+  onApproveTool?: ((approvalId: string, approved: boolean) => void) | undefined;
 }
 
-function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbleProps) {
+function MessageBubble({ message, busy, onOpenArtifact, onAction, onApproveTool }: MessageBubbleProps) {
   const role: "user" | "assistant" | "system" =
     message.role === "user" ? "user" : message.role === "assistant" ? "assistant" : "system";
 
@@ -286,6 +292,18 @@ function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbl
   const hasAnyVisible = text.trim().length > 0 || toolParts.length > 0 || reasoningText.trim().length > 0;
   const isEmptyAssistant = role === "assistant" && !busy && !hasAnyVisible;
 
+  // Any tool part that's waiting for the user to approve before running.
+  // We surface a dedicated approval prompt with Approve / Always-allow /
+  // Deny buttons so the chip's tiny "APPROVAL" badge isn't the only
+  // affordance.
+  const pendingApprovals = toolParts.flatMap((part) => {
+    const approval = getToolApproval(part);
+    const state = String(getToolPartState(part));
+    if (!approval?.id) return [];
+    if (state !== "input-available" && state !== "waiting-approval") return [];
+    return [{ id: approval.id, name: getToolName(part) ?? "tool", part }];
+  });
+
   return (
     <article className={`persona-bubble persona-bubble--${role}`} data-role={role}>
       {role === "assistant" && reasoningText ? <ReasonedBlock text={reasoningText} /> : null}
@@ -301,6 +319,39 @@ function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbl
         <p className="persona-bubble__empty">
           No response — try resending the question or asking it a different way.
         </p>
+      ) : null}
+
+      {pendingApprovals.length > 0 && onApproveTool ? (
+        <div className="persona-bubble__approvals" role="alertdialog" aria-label="Tool approvals">
+          <p className="persona-bubble__approvals-prompt">
+            {pendingApprovals.length === 1
+              ? `The agent wants to run ${toolLabel(pendingApprovals[0]!.name)}.`
+              : `The agent wants to run ${pendingApprovals.length} tools.`}
+          </p>
+          <div className="persona-bubble__approvals-actions">
+            {pendingApprovals.map((entry) => (
+              <div key={entry.id} className="persona-bubble__approval-row">
+                <span className="persona-bubble__approval-name">
+                  {toolEmoji(entry.name)} {toolLabel(entry.name)}
+                </span>
+                <button
+                  type="button"
+                  className="persona-bubble__approval-btn is-approve"
+                  onClick={() => onApproveTool(entry.id, true)}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  className="persona-bubble__approval-btn is-deny"
+                  onClick={() => onApproveTool(entry.id, false)}
+                >
+                  Deny
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       ) : null}
 
       {toolParts.length > 0 ? (

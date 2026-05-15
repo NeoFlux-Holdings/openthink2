@@ -22,7 +22,12 @@ import {
   type ReactNode
 } from "react";
 import { useAgent } from "agents/react";
-import { useAgentChat } from "@cloudflare/ai-chat/react";
+import {
+  getToolApproval,
+  getToolCallId,
+  getToolPartState,
+  useAgentChat
+} from "@cloudflare/ai-chat/react";
 import type { UIMessage } from "ai";
 import { PersonaShell, type PersonaArtifact, type PersonaThreadSummary } from "./persona-shell";
 import { PersonaHome, type PersonaRecentThread } from "./persona-pages/persona-home";
@@ -100,7 +105,8 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
     status,
     error,
     isStreaming,
-    isServerStreaming
+    isServerStreaming,
+    addToolApprovalResponse
   } = useAgentChat({
     agent,
     // Persona's normie default: feed every tool result back to the
@@ -110,6 +116,21 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
     autoContinueAfterToolResult: true,
     resume: false
   });
+
+  const decideToolApproval = useCallback(
+    (approvalId: string, approved: boolean) => {
+      try {
+        void Promise.resolve(addToolApprovalResponse({ id: approvalId, approved })).catch(
+          (approvalError: unknown) => {
+            console.warn("[persona] approval send failed", approvalError);
+          }
+        );
+      } catch (approvalError) {
+        console.warn("[persona] approval send failed", approvalError);
+      }
+    },
+    [addToolApprovalResponse]
+  );
 
   const connected = agent.readyState === WebSocket.OPEN;
   const busy = status === "submitted" || status === "streaming" || isStreaming || isServerStreaming;
@@ -257,7 +278,8 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
           agentColor: DEFAULT_AGENT_COLOR,
           modelLabel: defaultModel,
           onTitleChange: setThreadTitle,
-          onSelectFollowUp: (text: string) => submitNewTask(text)
+          onSelectFollowUp: (text: string) => submitNewTask(text),
+          onApproveTool: decideToolApproval
         };
         if (workingDoc) threadProps.workingDoc = workingDoc;
         return <PersonaThreadFeed {...threadProps} />;
