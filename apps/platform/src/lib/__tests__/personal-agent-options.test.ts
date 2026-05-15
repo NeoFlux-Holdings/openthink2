@@ -16,7 +16,7 @@ describe("personal agent options", () => {
     expect(config.enabled).toBe(true);
     expect(config.label).toBe("OpenThink gbrain + gstack");
     expect(config.setupStatus).toBe("complete");
-    expect(config.toolApprovalPolicy).toBe("auto");
+    expect(config.toolApprovalPolicy).toBe("allow-all");
     expect(config.enabledFeatures).toContain("semanticMemory");
     expect(config.enabledFeatures).toContain("mcpBridge");
   });
@@ -43,7 +43,7 @@ describe("personal agent options", () => {
   it("normalizes tool approval policy aliases to the default-safe enum", () => {
     expect(normalizePersonalAgentToolApprovalPolicy("ask everytime")).toBe("ask-every-time");
     expect(normalizePersonalAgentToolApprovalPolicy("allow all")).toBe("allow-all");
-    expect(normalizePersonalAgentToolApprovalPolicy("unknown")).toBe("auto");
+    expect(normalizePersonalAgentToolApprovalPolicy("unknown")).toBe("allow-all");
   });
 
   it("builds setup SQL for enabled profiles only", () => {
@@ -63,7 +63,7 @@ describe("personal agent options", () => {
     expect(sql).toContain("insert or replace into personal_agent_feature_flags");
     expect(sql).toContain("memmachine");
     expect(sql).toContain("external-runtime-needed");
-    expect(sql).toContain("MCP tool approval policy auto");
+    expect(sql).toContain("MCP tool approval policy allow-all");
   });
 
   it("seeds launch brief memory separately from the soul prompt", () => {

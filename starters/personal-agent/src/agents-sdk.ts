@@ -59,7 +59,11 @@ type ToolApprovalPolicy = "auto" | "ask-every-time" | "allow-all";
 
 const defaultModel = "@cf/moonshotai/kimi-k2.6";
 const workersAiFallbackModel = "@cf/moonshotai/kimi-k2.6";
-const defaultToolApprovalPolicy: ToolApprovalPolicy = "auto";
+// Persona-default behaviour: tools auto-run unless the user explicitly
+// set OPEN_THINK_TOOL_APPROVAL_POLICY to "ask-every-time". The legacy
+// chat (?shell=legacy) still surfaces the per-tool approval prompts so
+// power users can override per-call when they need to.
+const defaultToolApprovalPolicy: ToolApprovalPolicy = "allow-all";
 const docsMcpServerUrl = "https://docs.mcp.cloudflare.com/mcp";
 const cloudflareMcpServerUrl = "https://mcp.cloudflare.com/mcp";
 const cloudAgentInstance = {

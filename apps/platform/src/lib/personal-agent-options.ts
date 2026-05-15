@@ -110,7 +110,10 @@ export interface NormalizedPersonalAgentSubsystemConfig {
 }
 
 export const defaultPersonalAgentPresetId: PersonalAgentPresetId = "openthink-gbrain-gstack";
-export const defaultPersonalAgentToolApprovalPolicy: PersonalAgentToolApprovalPolicy = "auto";
+// Persona-default new deploys auto-run their tools. Users who want
+// per-tool approval can switch to "ask-every-time" in Settings later.
+// The legacy chat (?shell=legacy) keeps its own approval flow.
+export const defaultPersonalAgentToolApprovalPolicy: PersonalAgentToolApprovalPolicy = "allow-all";
 
 export const personalAgentFeatureCatalog: PersonalAgentFeatureDefinition[] = [
   {

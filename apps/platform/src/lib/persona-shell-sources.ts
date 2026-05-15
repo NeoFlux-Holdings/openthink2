@@ -938,7 +938,12 @@ import {
   type ReactNode
 } from "react";
 import { useAgent } from "agents/react";
-import { useAgentChat } from "@cloudflare/ai-chat/react";
+import {
+  getToolApproval,
+  getToolCallId,
+  getToolPartState,
+  useAgentChat
+} from "@cloudflare/ai-chat/react";
 import type { UIMessage } from "ai";
 import { PersonaShell, type PersonaArtifact, type PersonaThreadSummary } from "./persona-shell";
 import { PersonaHome, type PersonaRecentThread } from "./persona-pages/persona-home";
@@ -1016,7 +1021,8 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
     status,
     error,
     isStreaming,
-    isServerStreaming
+    isServerStreaming,
+    addToolApprovalResponse
   } = useAgentChat({
     agent,
     // Persona's normie default: feed every tool result back to the
@@ -1026,6 +1032,21 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
     autoContinueAfterToolResult: true,
     resume: false
   });
+
+  const decideToolApproval = useCallback(
+    (approvalId: string, approved: boolean) => {
+      try {
+        void Promise.resolve(addToolApprovalResponse({ id: approvalId, approved })).catch(
+          (approvalError: unknown) => {
+            console.warn("[persona] approval send failed", approvalError);
+          }
+        );
+      } catch (approvalError) {
+        console.warn("[persona] approval send failed", approvalError);
+      }
+    },
+    [addToolApprovalResponse]
+  );
 
   const connected = agent.readyState === WebSocket.OPEN;
   const busy = status === "submitted" || status === "streaming" || isStreaming || isServerStreaming;
@@ -1173,7 +1194,8 @@ export function PersonaApp(props: PersonaAppProps): ReactNode {
           agentColor: DEFAULT_AGENT_COLOR,
           modelLabel: defaultModel,
           onTitleChange: setThreadTitle,
-          onSelectFollowUp: (text: string) => submitNewTask(text)
+          onSelectFollowUp: (text: string) => submitNewTask(text),
+          onApproveTool: decideToolApproval
         };
         if (workingDoc) threadProps.workingDoc = workingDoc;
         return <PersonaThreadFeed {...threadProps} />;
@@ -1880,6 +1902,9 @@ export interface PersonaThreadFeedProps {
   onSelectFollowUp?: ((text: string) => void) | undefined;
   onOpenArtifact?: ((toolName: string, toolCallId: string | undefined) => void) | undefined;
   onMessageAction?: ((action: PersonaMessageAction, messageId: string) => void) | undefined;
+  /** Called when the user approves or denies a tool that requires
+   *  approval. \`approvalId\` is the \`getToolApproval(part).id\`. */
+  onApproveTool?: ((approvalId: string, approved: boolean) => void) | undefined;
 }
 
 export type PersonaMessageAction =
@@ -1910,7 +1935,8 @@ export function PersonaThreadFeed(props: PersonaThreadFeedProps): ReactNode {
     onTitleChange,
     onSelectFollowUp,
     onOpenArtifact,
-    onMessageAction
+    onMessageAction,
+    onApproveTool
   } = props;
 
   const [editing, setEditing] = useState(false);
@@ -2052,6 +2078,7 @@ export function PersonaThreadFeed(props: PersonaThreadFeedProps): ReactNode {
               busy={busy && message === visible[visible.length - 1]}
               onOpenArtifact={onOpenArtifact}
               onAction={onMessageAction}
+              onApproveTool={onApproveTool}
             />
           ))
         )}
@@ -2086,9 +2113,10 @@ interface MessageBubbleProps {
   busy: boolean;
   onOpenArtifact?: ((toolName: string, toolCallId: string | undefined) => void) | undefined;
   onAction?: ((action: PersonaMessageAction, messageId: string) => void) | undefined;
+  onApproveTool?: ((approvalId: string, approved: boolean) => void) | undefined;
 }
 
-function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbleProps) {
+function MessageBubble({ message, busy, onOpenArtifact, onAction, onApproveTool }: MessageBubbleProps) {
   const role: "user" | "assistant" | "system" =
     message.role === "user" ? "user" : message.role === "assistant" ? "assistant" : "system";
 
@@ -2110,6 +2138,18 @@ function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbl
   const hasAnyVisible = text.trim().length > 0 || toolParts.length > 0 || reasoningText.trim().length > 0;
   const isEmptyAssistant = role === "assistant" && !busy && !hasAnyVisible;
 
+  // Any tool part that's waiting for the user to approve before running.
+  // We surface a dedicated approval prompt with Approve / Always-allow /
+  // Deny buttons so the chip's tiny "APPROVAL" badge isn't the only
+  // affordance.
+  const pendingApprovals = toolParts.flatMap((part) => {
+    const approval = getToolApproval(part);
+    const state = String(getToolPartState(part));
+    if (!approval?.id) return [];
+    if (state !== "input-available" && state !== "waiting-approval") return [];
+    return [{ id: approval.id, name: getToolName(part) ?? "tool", part }];
+  });
+
   return (
     <article className={\`persona-bubble persona-bubble--\${role}\`} data-role={role}>
       {role === "assistant" && reasoningText ? <ReasonedBlock text={reasoningText} /> : null}
@@ -2125,6 +2165,39 @@ function MessageBubble({ message, busy, onOpenArtifact, onAction }: MessageBubbl
         <p className="persona-bubble__empty">
           No response — try resending the question or asking it a different way.
         </p>
+      ) : null}
+
+      {pendingApprovals.length > 0 && onApproveTool ? (
+        <div className="persona-bubble__approvals" role="alertdialog" aria-label="Tool approvals">
+          <p className="persona-bubble__approvals-prompt">
+            {pendingApprovals.length === 1
+              ? \`The agent wants to run \${toolLabel(pendingApprovals[0]!.name)}.\`
+              : \`The agent wants to run \${pendingApprovals.length} tools.\`}
+          </p>
+          <div className="persona-bubble__approvals-actions">
+            {pendingApprovals.map((entry) => (
+              <div key={entry.id} className="persona-bubble__approval-row">
+                <span className="persona-bubble__approval-name">
+                  {toolEmoji(entry.name)} {toolLabel(entry.name)}
+                </span>
+                <button
+                  type="button"
+                  className="persona-bubble__approval-btn is-approve"
+                  onClick={() => onApproveTool(entry.id, true)}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  className="persona-bubble__approval-btn is-deny"
+                  onClick={() => onApproveTool(entry.id, false)}
+                >
+                  Deny
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       ) : null}
 
       {toolParts.length > 0 ? (
@@ -5159,6 +5232,69 @@ export const PERSONA_PAGES_CSS = `/*
   color: var(--persona-ink-soft, #2f2f37);
   font-size: 0.84rem;
   line-height: 1.45;
+}
+
+.persona-bubble__approvals {
+  display: grid;
+  gap: 10px;
+  margin: 6px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(241, 113, 5, 0.32);
+  border-radius: 12px;
+  background: rgba(241, 113, 5, 0.06);
+}
+
+.persona-bubble__approvals-prompt {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--persona-ink, #15151a);
+}
+
+.persona-bubble__approvals-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.persona-bubble__approval-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.persona-bubble__approval-name {
+  font-size: 0.86rem;
+  color: var(--persona-ink-soft, #2f2f37);
+}
+
+.persona-bubble__approval-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.persona-bubble__approval-btn.is-approve {
+  background: var(--persona-accent, #3a5bd7);
+  color: white;
+}
+
+.persona-bubble__approval-btn.is-approve:hover {
+  filter: brightness(1.05);
+}
+
+.persona-bubble__approval-btn.is-deny {
+  background: transparent;
+  color: var(--persona-red, #b43b35);
+  border: 1px solid rgba(180, 59, 53, 0.4);
+}
+
+.persona-bubble__approval-btn.is-deny:hover {
+  background: rgba(180, 59, 53, 0.08);
 }
 
 .persona-bubble__tools {
